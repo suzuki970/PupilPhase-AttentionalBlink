@@ -1,0 +1,43 @@
+{
+  "EYE_TRACKER": "Eyelink",
+  "SOUND_DEVICE": 7,
+  "TIME_FIXATION": 6,
+  "TIME_ISI": 0.05,
+  "AUDIO_SAMPLING_RATE": 44100,
+  "FRAME_RATE": 60,
+  "RESAMPLING_RATE": 100,
+  "SAMPLING_RATE": 1000,
+  "VISUAL_DISTANCE": 60,
+  "NUM_TRIAL_TRAINING": 20,
+  "ITERATION": 10,
+  "NUM_SOUNDS": 16,
+  "NUM_RUNS": 6,
+  "Lag": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "TargetLocs": [
+    1
+  ],
+  "LUMINANCE_BACKGROUND": -1,
+  "DOT_PITCH": 0.33,
+  "TASK_JITTER": [
+    40,
+    50
+  ],
+  "SCREEN_RANGE": 1,
+  "FULL_SCREEN": true,
+  "SCREEN_NUM": 0,
+  "window_analysis": 15,
+  "keyList": [
+    "escape",
+    "left",
+    "right"
+  ],
+  "Subject_id": "s17",
+  "Gender": "M",
+  "Age": 29
+}

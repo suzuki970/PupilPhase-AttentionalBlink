@@ -1,0 +1,1 @@
+{"THRES_DIFF": 10, "WID_ANALYSIS": 3, "WID_SEQUENCE": 4.48, "WID_BP_ANALYSIS": 5, "WID_FILTER": [], "RESAMPLING_RATE": 200, "usedEye": "R", "mmFlag": true, "normFlag": false, "s_trg": [], "visualization": false, "MS": false, "rejectFlag": [[false, false], [false, true]], "SAMPLING_RATE": 1000.0}

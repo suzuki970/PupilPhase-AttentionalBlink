@@ -1,0 +1,40 @@
+---
+title: "Supplementary figures' note for auditory attentional blink"
+author: "Yuta Suzuki, Hsin-I Liao"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  word_document:
+     reference_docx: doc_templete.docx
+     
+params:
+  year: 2026
+---
+
+## Article information
+
+*Corresponding author: Yuta Suzuki
+NTT Communication Science Laboratories, NTT Corporation, Atsugi, Japan
+Tel: +81-046-240-3525, 
+E-mail:suzukiy970@gmail.com
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+res <- readRDS("results_objects.rds")
+list2env(res, envir = environment())
+
+```
+
+\pagebreak
+n contrast to the pupil dilation phase (PD phase), we did not observe a clear tendency in the difference between bin-wise accuracy and overall accuracy (collapsed across lag), as shown in Supplementary Figure 1. However, in both the T1-ignore and T1-attend conditions, a significant or marginally significant decrease in accuracy was observed during the 4–5 s interval 
+(`r annotation_df_wave_peaks[(annotation_df_wave_peaks$x_position==5)&(annotation_df_wave_peaks$session=="T1-passive"),"descrip"]`for T1-ignore; `r annotation_df_wave_peaks[(annotation_df_wave_peaks$x_position==5)&(annotation_df_wave_peaks$session=="T1-active"),"descrip"]` for T1-attend). 
+
+
+Detection accuracy for T1 and T2 sequence remained high 
+(T1: M=`r round(mean(df_accuracy_T1_exp2$hit_t1),3)`, SD=`r round(sd(df_accuracy_T1_exp2$hit_t1),3)`, 
+Probe: M=`r round(mean(df_accuracy_T2_exp2$hit_t2),3)`, SD=`r round(sd(df_accuracy_T2_exp2$hit_t2),3)`) as shown in Supplementary Figure 2). 
+We confirmed that there were no differences between the PD and PC phases in T1 detection accuracy for either the T1T2 or T1-only sequences, as shown in Supplementary Figure 2A
+(`r showTtestSummary(stat_t1_exp2_T1_only)`; `r showTtestSummary(stat_t1_exp2_T1_both)`). 
+For T2 detection accuracy, consistent with Figure 4A, there was a significant difference between the PD and PC phases 
+(`r showTtestSummary(stat_t2_exp2_T1_both)`)
+, whereas no such difference was observed for the T2-only sequence 
+(`r showTtestSummary(stat_t2_exp2_T2_only)`).

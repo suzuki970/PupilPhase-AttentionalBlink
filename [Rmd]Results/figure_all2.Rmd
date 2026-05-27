@@ -1,0 +1,1538 @@
+---
+title: "Figures' note for auditory attentional blink"
+author: "Yuta Suzuki, Hsin-I Liao"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  slidy_presentation:
+  # word_document:
+  #    # css: style.css
+  #    reference_docx: doc_templete.docx
+     
+params:
+  year: 2026
+# editor_options: 
+#   markdown: 
+#     wrap: 72
+
+---
+
+## Article information
+
+*Corresponding author: Yuta Suzuki
+NTT Communication Science Laboratories, NTT Corporation, Atsugi, Japan
+Tel: +81-046-240-3525, 
+E-mail:suzukiy970@gmail.com
+
+# Results
+# Experiment 1
+```{r, message=FALSE, echo=FALSE,warning=FALSE,include=FALSE}
+
+rootFolder = "/Users/yutasuzuki/Desktop/Github/"
+rootFolder = "/Volumes/Burger/project/AttentinalBlink/"
+
+expFolder = paste0(rootFolder,"AuditoryAttentionalBlink/Exp1/data")
+
+
+folderName = list.files(expFolder, full.names=T)
+folderName = folderName[length(folderName)]
+
+date = unlist(strsplit(folderName,"/"))
+date = date[length(date)]
+
+dataFolder = paste0(expFolder,"AuditoryAttentionalBlink/Exp1/data/",date,"/")
+saveFolder = paste0("figure/",format(Sys.time(), '%Y%m%d'),"/")
+
+cfg = jsonlite::fromJSON(paste0(folderName,"/cfg.json"))
+bpass="_015"
+bpass=""
+
+figcount = 1
+
+sTime = cfg$TIME_START
+eTime = cfg$TIME_END
+analysisWin = 1
+mmFlg = cfg$mmFlag
+
+subFlg = F
+nsFlag = T
+saveFig = T
+blinkFlg = F
+normFlg = T
+
+if(!dir.exists(saveFolder)){
+  dir.create(saveFolder)
+}
+
+g2 = c('1','2','3','4','5')
+g2 = c(80,160,240,320,400)
+
+g3 = c('No-target','T1 only','T2 only','Both')
+g4 = c('Behavior')
+
+if(blinkFlg){
+  g5 = c('Blink-nonsync','Blink-sync')
+}else{
+  g5 = c('T1-Attend','T1-Ignore','T1-Attend','T1-Ignore')
+}
+
+config <- list(lim_x = c(0,1),
+               lim_y = c(2,4),
+               alpha = 0.1,
+               stride = 0.1,
+               label_x = "Time [sec]",
+               label_y = "Pupil size[a.u.]",
+               title = "",
+               linetype = T,
+               shape=F,
+               # grCol = c("#738CD9","#222222")
+               # grCol = c("#AB004A","#222222")
+               # grCol = c("#E69F00","#738CD9")
+               grCol = c('Black','gray')
+               
+)
+
+p_all = list()
+anovaTable = list()
+
+dat_exp1 <- read.xlsx(paste0(rootFolder,"AuditoryAttentionalBlink/Exp1/subInfo.xlsx"))
+dat_exp2 <- read.xlsx(paste0(rootFolder,"AuditoryAttentionalBlink_realtime/subInfo.xlsx"))
+
+
+df_sub = data.frame(
+  exp=c(1,2),
+  numOfSub = c(dim(dat_exp1)[1],dim(dat_exp2)[1]),
+  numOfMen = c(length(which(dat_exp1[!is.na(dat_exp1$gender),]$gender == 'M')),
+               length(which(dat_exp2[!is.na(dat_exp2$gender),]$gender == 'M'))),
+  numOfWomen = c(length(which(dat_exp1[!is.na(dat_exp1$gender),]$gender == 'F')),
+                 length(which(dat_exp2[!is.na(dat_exp2$gender),]$gender == 'F')))
+)
+
+```
+
+__Attentional blink__ is a phenomenon of temporal incapable to allocate attention.
+* Within a certain time window, the detection of T2 was impaired.
+* Attentional resource is occupied for T1 processing, resulting a processing deficit for T2 detection.
+__Distractors:__ Twenty-one 30-ms pure tones ranged from 529 to 1330 Hz
+__Target 1(T1):__ Composed of six 5-ms pulses, and its frequency could be any of the 21 frequencies of the distractors
+__Target 2 (T2, Probe):__ A glide that changed smoothly in frequency from 636 to 1006 Hz
+* Each trial contains 20 sequence. 
+* A total of 7 trials segregated with 6-s rest in-between were tested in the one session.
+* Experiment included 57 % of the ‘Both’ sequence and 43 % of T1, T2 sequence.
+__Task:__ Participant reported T1 and T2 sound as soon as possible when they detected them.
+
+## Behavior
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df <- load_json_dataframe0(folderName, paste0("df",bpass,".json"))
+
+```
+
+### T1 response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+config$grCol = c("#E69F00","#738CD9")
+config$label_x=""
+config$label_y="Accuracy(T1)"
+
+df_accuracy_T1 = df
+df_accuracy_T1 = df_accuracy_T1[(df_accuracy_T1$condition=="T1_only")|(df_accuracy_T1$condition=="Both"),]
+df_accuracy_T1 = df_accuracy_T1[(df_accuracy_T1$session=="T1-active"),]
+df_accuracy_T1$condition = factor(df_accuracy_T1$condition, levels=g3)
+
+df_accuracy_T1 = aggregate(hit_t1 ~ sub*condition*session, data = df_accuracy_T1, FUN = 'mean')
+
+p_all$accuracy_T1 = dispLineGraph(df_accuracy_T1,config,"hit_t1",c('condition',"session"))+
+  theme(
+    legend.position = c(1,1),
+    legend.justification = c(1,0)
+  )
+
+config$ylim = round(seq(0.96,1,0.01),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,2,1),2)
+config$xlim_stride = 0.5
+
+p_all$accuracy_T1 = setEmptyStyle(p_all$accuracy_T1,config)
+p_all$accuracy_T1$size = c(8,10)
+
+```
+
+### T2 response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy_T2 = df
+# df_accuracy_T2 = df_accuracy_T2[(df_accuracy_T2$target==3)|(df_accuracy_T2$target==4),]
+df_accuracy_T2 = df_accuracy_T2[(df_accuracy_T2$condition=="T2_only"),]
+# df_accuracy_T2$condition = g3[df_accuracy_T2$target]
+# df_accuracy_T2$condition = factor(df_accuracy_T2$condition, levels=g3)
+
+df_accuracy_T2 = aggregate(hit_t2 ~ sub*condition*session, data = df_accuracy_T2, FUN = 'mean')
+
+config$label_y="Accuracy(T2)"
+p_all$accuracy_T2 = dispLineGraph(df_accuracy_T2,config,"hit_t2",c('condition',"session"))+
+  theme(
+    legend.position = c(1,1),
+    legend.justification = c(1,0)
+  )
+
+config$ylim = round(seq(0.9,1,0.02),2)
+config$ylim_stride = 0.01
+config$xlim = round(seq(1,1,1),2)
+config$xlim_stride = 0.5
+
+p_all$accuracy_T2 = setEmptyStyle(p_all$accuracy_T2,config)
+p_all$accuracy_T2$size = c(4,10)
+
+```
+
+### P(T2|T1) response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy_T1T2 = df
+df_accuracy_T1T2 = df_accuracy_T1T2[df_accuracy_T1T2$condition=="Both",]
+# df_accuracy_T1T2$target = g3[df_accuracy_T1T2$target]
+df_accuracy_T1T2$n=1
+
+fit = quickpsy(df_accuracy_T1T2, lag, P.T2.T1., n, 
+               grouping = c("session"), 
+               prob=0.75, 
+               bootstrap = "none"
+               # B = 1000
+)
+
+psy_data = data.frame(
+  session = fit$curves$session,
+  x = fit$curves$x,
+  y = fit$curves$y
+)
+
+df_accuracy_T1T2 = aggregate(P.T2.T1. ~ sub*lag*session, data = df_accuracy_T1T2, FUN = 'mean')
+anovaTable$df_accuracy_T1T2 = df_accuracy_T1T2
+  
+anovakun(df_accuracy_T1T2,"sAB",long=T, peta=T)
+PT1T2_anova = forDrawingSigANOVA
+PT1T2_anova_post = forDrawingPost
+
+df_accuracy_T1T2$sub = factor(df_accuracy_T1T2$sub ,levels = unique(df_accuracy_T1T2$sub))
+df_accuracy_T1T2$lag = factor(df_accuracy_T1T2$lag,levels = unique(df_accuracy_T1T2$lag))
+df_accuracy_T1T2$session = factor(df_accuracy_T1T2$session,levels = unique(df_accuracy_T1T2$session))
+
+bf_table = anovaBF(P.T2.T1. ~ lag*session + sub, data=df_accuracy_T1T2, whichRandom = "sub",progress=FALSE)
+anovaTable$bf_table=bf_table
+
+
+config$line=F
+config$label_y="Accuracy(T2|T1)"
+config$label_y="Lag"
+p_all$accuracy_T2T1 = dispLineGraph(df_accuracy_T1T2,config,"P.T2.T1.",c('lag',"session"))+
+  geom_line(data = psy_data, 
+            aes(x=x,y=y,group=session))+
+  theme(
+    legend.position = c(0,1),
+    legend.justification = c(0,1)
+  )
+
+
+
+config$ylim = round(seq(0,1,0.2),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+p_all$accuracy_T2T1 = setEmptyStyle(p_all$accuracy_T2T1,config)
+p_all$accuracy_T2T1$size = c(8,10)
+
+
+df_accuracy_T1T2 = df
+df_accuracy_T1T2 = df_accuracy_T1T2[df_accuracy_T1T2$condition=="Both",]
+# df_accuracy_T1T2$target = g3[df_accuracy_T1T2$target]
+
+df_accuracy_T1T2 = aggregate(P.T2.T1. ~ sub*lag*session, data = df_accuracy_T1T2, FUN = 'mean')
+
+df_diff = df_accuracy_T1T2[df_accuracy_T1T2$session=="T1-passive",]
+df_diff$P.T2.T1.=df_diff$P.T2.T1.-df_accuracy_T1T2[df_accuracy_T1T2$session=="T1-active",]$P.T2.T1.
+
+m <- lmer( P.T2.T1. ~ lag + (1| sub), data = df_diff)
+
+sm = summary(m)
+coef_df <- extract_coef_info(sm, c("lag"))
+    
+intercept = sm$coefficients["(Intercept)", "Estimate"]
+
+lag_vals <- seq(1, 5, by = 0.1)
+
+ribbon_df = data.frame(
+  lag = lag_vals,
+  y = intercept + sm$coefficients["lag", "Estimate"] * lag_vals,
+  ymin = intercept- sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["lag", "Estimate"] * lag_vals,
+  ymax = intercept + sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["lag", "Estimate"] * lag_vals
+)
+
+config$grCol=NULL
+p_all$accuracy_T2T1_diff = dispLineGraph(df_diff,config,"P.T2.T1.",c('lag'))+
+  geom_abline(intercept = intercept,
+              slope = sm$coefficients["lag", "Estimate"], size = 0.5,color="black")+
+  geom_ribbon(data = ribbon_df, aes(x = lag, y=y,ymin = ymin, ymax = ymax), inherit.aes = FALSE,alpha = 0.2)+
+   theme(
+    legend.position = 'none'
+  )
+config$ylim = round(seq(0,0.2,0.05),2)
+config$ylim_stride = 0.01
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+p_all$accuracy_T2T1_diff = setEmptyStyle(p_all$accuracy_T2T1_diff,config)
+p_all$accuracy_T2T1_diff$size = c(8,10)
+
+
+
+```
+
+## Results
+## Baseline Pupil size
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_pupil <- load_json_dataframe0(folderName,  paste0("df_pupil.json"))
+df <- load_json_dataframe0(folderName, paste0("df",bpass,".json"))
+df_event_BP <- load_json_dataframe0(folderName, paste0("df_event_BP",bpass,".json"))
+
+g = NULL
+for(iTime in sort(unique(df_event_BP$bin))){
+  if (iTime >=0){
+    g = rbind(g,paste0(iTime,'-',iTime+1))
+  }
+}
+df_event_BP$bin = g[df_event_BP$bin+1]
+
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+g = c("miss","hit")
+
+# df_pupil = df_pupil[df_pupil$session=="T1-active",]
+df_pupil$data_x = df_pupil$Time
+df_pupil$sdt = g[df_pupil$P.T2.T1.+1]
+
+config$label_x="Time from T2 onset[s]"
+config$label_y="Pupil size[mm]"
+config$linetype=F
+config$grCol=c('#d97168','gray')
+
+p_all$pupil = disp(df_pupil, config, "pupil", T, c("session","sdt"))+
+  geom_vline(xintercept = 0, linetype = "solid", color = "black") +
+  facet_wrap(. ~session)
+
+config$ylim = round(seq(4.8,5.6,0.2),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(-3,3,1),2)
+config$xlim_stride = 0.1
+
+p_all$pupil = setEmptyStyle(p_all$pupil,config)+
+  scale_x_continuous(breaks = config$xlim)
+
+p_all$pupil$size=c(10,5)
+
+```
+
+### pupil hit vs. miss
+```{r, message=FALSE, echo=FALSE,warning=FALSE,include=FALSE}
+
+mmName = c('miss','hit')
+
+df_accuracy = df
+df_accuracy = df_accuracy[df_accuracy$condition=="Both",]
+df_accuracy$label = mmName[df_accuracy$P.T2.T1.+1]
+
+df_accuracy = aggregate(PD ~ sub*session*label, data = df_accuracy, FUN = 'mean')
+
+anovakun(df_accuracy,"sAB",long=T, peta=T)
+anova_BP = forDrawingSigANOVA
+anovaTable$anova_BP=anova_BP
+
+df_accuracy$sub = factor(df_accuracy$sub,levels = unique(df_accuracy$sub))
+df_accuracy$session = factor(df_accuracy$session ,levels = unique(df_accuracy$session))
+df_accuracy$label = factor(df_accuracy$label,levels = unique(df_accuracy$label))
+
+bf_table_BP = anovaBF(PD ~ session*label+sub, data=df_accuracy, whichRandom = "sub",progress=FALSE)
+anovaTable$bf_table_BP=bf_table_BP
+
+# showAnovaSummary(forDrawingSigANOVA,bf_table,4,1)
+
+annotation_df=NULL
+ttest_BP=NULL
+xpos=1
+for (iSession in unique(df_accuracy$session)){
+  
+  x1 = df_accuracy[(df_accuracy$session==iSession)&(df_accuracy$label=="miss"),]$PD
+  x2 = df_accuracy[(df_accuracy$session==iSession)&(df_accuracy$label=="hit"),]$PD
+  
+  ttest = getTtestSummary(x1,x2)
+  ttest_BP[[iSession]] = getTtestSummary(x1,x2)
+  
+  if( ttest$ttest$p.value < 0.05){
+    l = "*"
+  }else if ((ttest$ttest$p.value > 0.05)&(ttest$ttest$p.value < 0.1)){
+    l = "+"
+  }else{ 
+    l = "n.s."
+  }
+  
+  annotation_df = rbind(annotation_df,
+                        data.frame(
+                          session=iSession,
+                          x_position = xpos,
+                          y_position = mean(x1)+sd(x1)/sqrt(length(unique(df_accuracy$sub))),
+                          label = l,
+                          pVal=ttest$ttest$p.value
+                        ))
+  xpos = xpos+1
+  
+}
+
+
+config$line=T
+config$label_x = ""
+config$label_y = "Pupil size[mm]"
+config$grCol=rep(c('#d97168','gray'),2)
+
+p_all$PD = dispLineGraph(df_accuracy,config,"PD",c('session',"label"),markerSize=12)+
+  geom_text(data = annotation_df, size=7,
+            aes(x = x_position, y = y_position, label = label,color=session), inherit.aes = FALSE)+
+  theme(
+    legend.position = c(1,1),
+    legend.justification = c(1,0)
+  )
+
+
+config$ylim = round(seq(4.8,5.4,0.1),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,2,1),2)
+config$xlim_stride = 0.5
+
+p_all$PD = setEmptyStyle(p_all$PD,config)
+p_all$PD$size=c(10,10)
+
+mmName = c('miss','hit')
+
+df_accuracy = df
+df_accuracy = df_accuracy[df_accuracy$condition=="Both",]
+df_accuracy$label = mmName[df_accuracy$P.T2.T1.+1]
+df_accuracy = aggregate(PD ~ sub*session*lag*label, data = df_accuracy, FUN = 'mean')
+config$title=""
+p = dispLineGraph(df_accuracy,config,"PD",c('session',"label","lag"))+
+  facet_wrap(.~lag)
+
+```
+
+### pupil bin
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy = df
+df_accuracy = df_accuracy[df_accuracy$condition=="Both",]
+# df_accuracy$label = mmName[df_accuracy$P.T2.T1.+1]
+# df_accuracy$y = df_accuracy$P.T2.T1.
+df_accuracy$PD_bin = df_accuracy$PD_bin+1
+df_accuracy$y = df_accuracy$y_resid
+
+
+modelList = c(
+  "y ~ PD_bin + (1| sub)"
+)
+
+estimateAll = NULL
+ribbon_df = NULL
+for(iSession in unique(df_accuracy$session)){
+  for( m in modelList){
+    
+    eval(parse(text=paste0(" m <- lmer(", modelList, ", data = df_accuracy[df_accuracy$session==iSession,])")))
+    sm = summary(m)
+    # print(sm$coefficients)
+    terms <- c("PD")
+    coef_df <- extract_coef_info(sm, c("PD_bin"))
+    
+    intercept = sm$coefficients["(Intercept)", "Estimate"]
+    coef_df$formula = c(sm$call$formula)
+    coef_df$session = iSession
+    coef_df$intercept = intercept
+    coef_df$slope = sm$coefficients["PD_bin", "Estimate"]
+    coef_df$intercept_min = intercept - sm$coefficients["(Intercept)", "Std. Error"]
+    coef_df$intercept_max = intercept + sm$coefficients["(Intercept)", "Std. Error"]
+    coef_df$x_position = 1.5
+    coef_df$y_position = mean(df_accuracy[(df_accuracy$session==iSession)&
+                                            (df_accuracy$PD_bin==1),]$y)+0.03
+    
+    if (coef_df$pVal<0.001){
+      coef_df$pVal = 'p<0.001'
+    }
+    else{
+      coef_df$pVal = paste0('p=',round(coef_df$pVal,4))      
+    }
+    
+    estimateAll = rbind(estimateAll,coef_df)
+    
+    pupil_vals <- seq(1, 5, by = 0.1)
+    ribbon_df = rbind(ribbon_df,
+                      data.frame(
+                        session = iSession,
+                        pupil_bin = pupil_vals,
+                        y = intercept + sm$coefficients["PD_bin", "Estimate"] * pupil_vals,
+                        ymin = intercept- sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["PD_bin", "Estimate"] * pupil_vals,
+                        ymax = intercept + sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["PD_bin", "Estimate"] * pupil_vals
+                      ))
+    
+  }
+}
+
+df_accuracy = aggregate(y ~ sub*session*PD_bin, data = df_accuracy, FUN = 'mean')
+
+config$label_x="Pupil bin"
+config$label_y="Accuracy"
+config$grCol = c("#E69F00","#738CD9")
+
+config$linetype=F
+p_all$PD_bin = dispLineGraph(df_accuracy,config,"y",c('PD_bin',"session"),markerSize=12)+
+  geom_abline(data=estimateAll,aes(intercept = intercept, slope = slope,color=session), size = 0.5)+
+  geom_ribbon(data = ribbon_df, aes(x = pupil_bin, y=y,ymin = ymin, ymax = ymax, fill = session), alpha = 0.2)+
+  scale_color_manual(values = c("T1-active" = "#E69F00", "T1-passive" = "#738CD9"))+
+  geom_text(data = estimateAll, size=5,
+            aes(x = x_position, y = y_position, label = pVal, color=session), inherit.aes = FALSE)+
+  theme(
+    legend.position = c(1,1),
+    legend.justification = c(1,0)
+  )
+
+# print(p_all$PD_bin)
+config$ylim = round(seq(0.45,0.7,0.05),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+p_all$PD_bin = setEmptyStyle(p_all$PD_bin,config)
+p_all$PD_bin$size=c(10,10)
+
+```
+
+### pupil size at each bin
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+# config$line=T
+# config$label_x = ""
+# config$label_y = "Pupil size[mm]"
+# config$grCol=NULL
+# # rep(c('#d97168','gray'),2)
+# 
+# p_all$event_BP = dispLineGraph(df_event_BP,config,"BP",c('bin',"event"),markerSize=12)+
+#   # geom_point(data=df_event_BP,aes(x=bin,group=sub,color=order),size = 1,alpha=0.5)+
+#   # geom_line(data=df_event_BP,aes(x=bin,group=sub,color=marker),size = 0.5,alpha=0.5)+
+#   theme(
+#     legend.position = c(1,1),
+#     legend.justification = c(1,0)
+#   )
+# 
+# 
+# config$ylim = round(seq(4.7,5.5,0.1),2)
+# config$ylim_stride = 0.02
+# config$xlim = round(seq(1,5,1),2)
+# config$xlim_stride = 0.5
+# 
+# p_all$event_BP = setEmptyStyle(p_all$event_BP,config)
+# p_all$event_BP$size=c(10,10)
+# 
+# anovakun(df_event_BP,"sAB",long=T, peta=T)
+# 
+# x1 = df_event_BP[(df_event_BP$bin=="2-3")&(df_event_BP$event=="peaks"),]$BP
+# x2 = df_event_BP[(df_event_BP$bin=="2-3")&(df_event_BP$event=="troughs"),]$BP
+# 
+# ttest_1back = getTtestSummary(x1,x2)
+# 
+# df_event_BP$bin <- factor(df_event_BP$bin, levels = unique(df_event_BP$bin))
+
+p_all$event_BP = dispLineGraph(df_event_BP, config, "BP", c("event","bin"), markerSize=8) +
+  facet_grid(. ~ bin)+
+  geom_point(
+    data = df_event_BP,
+    aes(x = event, y = BP, group = sub, color = event),
+    position = position_dodge(width = 0.1),
+    size = 1, alpha = 0.5,
+    inherit.aes = FALSE
+  ) +
+  geom_line(
+    data = df_event_BP,
+    aes(x = event, y = BP, group = sub, color = event),
+    # position = position_dodge(width = 0.1),
+    linewidth = 0.5, alpha = 0.5,
+    inherit.aes = FALSE
+  ) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 30, hjust = 1)
+  )
+
+  
+```
+
+
+## Accuracy
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df <- load_json_dataframe0(folderName, paste0("df",bpass,".json"))
+df_sum <- load_json_dataframe0(folderName, paste0("df_sum",bpass,".json"))
+
+```
+
+## Pupil wave
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+# df <- load_json_dataframe0(folderName, "df.json")
+df <- load_json_dataframe0(folderName, paste0("df2",bpass,".json"))
+df_sum <- load_json_dataframe0(folderName,paste0("df_sum",bpass,".json"))
+df_pupilTimeCourse <- load_json_dataframe0(folderName,paste0("df_pupilTimeCourse.json"))
+
+g = NULL
+for(iTime in sort(unique(df$time_bin))){
+  if (iTime >=0){
+    g = rbind(g,paste0(iTime,'-',iTime+1))
+  }
+}
+
+eTime = 6
+
+df_accuracy = df
+df_accuracy = df_accuracy[df_accuracy$wave_onset_troughs_st >= 0,]
+df_accuracy = df_accuracy[df_accuracy$wave_onset_troughs_st < eTime,]
+
+p <- ggplot(df_accuracy, aes(x = wave_onset_troughs_st, fill = session)) +
+  geom_histogram(
+    aes(y = after_stat(count / sum(count))),
+    bins = 100,
+    position = "identity",
+    alpha = .6
+  ) +
+  scale_fill_manual(values = config$grCol) 
+
+
+```
+
+### Averaged accuracy diff
+```{r, message=FALSE, echo=FALSE,warning=FALSE,include=FALSE}
+
+annotation_df_wave=NULL
+
+xlims=NULL
+xlims$troughs$ylim=round(seq(0,0.4,0.1),2)
+xlims$troughs$ylim_stride=0.01
+xlims$peaks$ylim=round(seq(-0.4,0,0.1),2)
+xlims$peaks$ylim_stride=0.01
+
+for(phaseType in c('peaks','troughs')){
+  annotation_df_wave[[phaseType]]=NULL
+
+  time=df[[paste0("wave_onset_",phaseType,"_st")]]
+  for(iTime in 0:eTime){
+    df[(time>=iTime)&(time<iTime+1),]["time_bin"]=iTime
+  }
+  
+  df_accuracy = df
+  df_accuracy = df_accuracy[df_accuracy$time_bin >= 0,]
+  df_accuracy = df_accuracy[df_accuracy$time_bin < eTime,]
+  df_accuracy$y = df_accuracy$y_resid_smooth_norm
+  # df_accuracy = aggregate(y_resid_smooth_norm ~ sub*time_bin*session, data = df_accuracy, FUN = 'mean')
+  df_accuracy = aggregate(y ~ sub*time_bin*session, data = df_accuracy, FUN = 'mean')
+  
+  for (iTime in unique(df_accuracy$time_bin)){
+    for (iSession in unique(df_accuracy$session)){
+      
+      x1 = df_accuracy[(df_accuracy$time_bin==iTime)&(df_accuracy$session==iSession),]$y
+      x2 = rep(0, length(x1))
+      
+      ttest_1back = getTtestSummary(x1,x2)
+      
+      if( ttest_1back$ttest$p.value < 0.05){
+        l = "*"
+      }else if ((ttest_1back$ttest$p.value > 0.05)&(ttest_1back$ttest$p.value < 0.1)){
+        l = "+"
+      }else{ 
+        l = ""
+      }
+      
+      annotation_df_wave[[phaseType]] = rbind(annotation_df_wave[[phaseType]],
+                            data.frame(
+                              phaseType=phaseType,
+                              time_bin = iTime+1,
+                              session = iSession,
+                              x_position = iTime+1,
+                              y_position = mean(x1)+0.025,
+                              label = l,
+                              pVal=ttest_1back$ttest$p.value,
+                              descrip=showTtestSummary(getTtestSummary(x1,x2))
+                            ))
+      
+    }
+  }
+  
+  config$grCol = c("#E69F00","#738CD9")
+  
+  # config$grCol = NULL
+  config$line = T
+  config$title = ""
+  config$label_x = "Time bin [s]"
+  config$label_y = "Accuracy diff. from mean"
+  
+  df_accuracy$time_bin = g[df_accuracy$time_bin+1]
+  df_accuracy$time_bin = factor(df_accuracy$time_bin,levels = g)
+  
+  p = dispLineGraph(df_accuracy,config,"y",c('time_bin','session'))+
+    geom_hline(yintercept = 0, linetype = "solid", color = "black") +
+    geom_text(data = annotation_df_wave[[phaseType]], size=7,
+              aes(x = x_position, y = y_position, label = label,color=session), inherit.aes = FALSE)+
+    theme(
+      legend.position = c(1, 1),
+      legend.justification = c(1, 1),
+      axis.text.x = element_text(angle = 30, hjust = 0.8)
+    )
+  
+  config$ylim = round(seq(-0.15,0.15,0.05),2)
+  config$ylim_stride = 0.01
+  config$xlim = round(seq(1,eTime,1),2)
+  config$xlim_stride = 0.5
+  
+  p = setEmptyStyle(p,config,size_font=60)
+  p$size = c(8,6)
+  
+  p_all[[paste0("wave_",phaseType)]] = p
+  
+  
+  df_pupilTimeCourse$data_x = df_pupilTimeCourse$Time
+  
+  config$label_x="Time from pupil constriction[s]"
+  config$label_y="Pupil size change[%]"
+  config$linetype=F
+  p = disp(df_pupilTimeCourse, config, paste0("pupil_",phaseType), T, c("Session"))+
+    theme(
+      legend.position = c(0,1),
+      legend.justification = c(0,1)
+    )
+  
+  
+  # config$ylim = round(seq(0,6,2),2)
+  config$ylim = xlims[[phaseType]]$ylim
+  config$ylim_stride = 0.01
+  config$xlim = round(seq(0,6,1),2)
+  config$xlim_stride = 0.5
+  
+  p = setEmptyStyle(p,config,size_font=60)+
+    scale_x_continuous(breaks = config$xlim)
+  
+  p$size=c(8,5)
+  
+  p_all[[paste0("pupil_",phaseType)]] = p
+  
+  
+}
+
+```
+
+```{r, message=FALSE, echo=FALSE,warning=FALSE}
+
+# df_accuracy = df
+# 
+# df_accuracy = df_accuracy[df_accuracy$time_bin >= 0,]
+# df_accuracy = df_accuracy[df_accuracy$time_bin < eTime,]
+# 
+# # df_accuracy = df_accuracy[df_accuracy$target == 4,]
+# 
+# df_accuracy$y = df_accuracy$P.T2.T1._smooth_norm
+# # df_accuracy$y = df_accuracy$y_resid_smooth_norm
+# 
+# df_accuracy = aggregate(y ~ sub*time_bin, data = df_accuracy, FUN = 'mean')
+# # df_accuracy = aggregate(P.T2.T1. ~ sub*time_bin, data = df_accuracy, FUN = 'mean')
+# # df_accuracy$y_resid_smooth_norm = df_accuracy$P.T2.T1.
+# 
+# annotation_df=NULL
+# for (iTime in unique(df_accuracy$time_bin)){
+#   
+#   x1 = df_accuracy[(df_accuracy$time_bin==iTime),]$y
+#   x2 = rep(0, length(x1))
+#   
+#   ttest_1back = getTtestSummary(x1,x2)
+#   
+#   if( ttest_1back$ttest$p.value < 0.05){
+#     l = "*"
+#   }else if ((ttest_1back$ttest$p.value > 0.05)&(ttest_1back$ttest$p.value < 0.1)){
+#     l = "+"
+#   }else{ 
+#     l = ""
+#   }
+#   
+#   annotation_df = rbind(annotation_df,
+#                         data.frame(
+#                           time_bin = iTime+1,
+#                           x_position = iTime+1,
+#                           y_position = mean(x1)+0.025,
+#                           label = l,
+#                           pVal=ttest_1back$ttest$p.value
+#                         ))
+#   
+# }
+# 
+# df_accuracy$time_bin = g[df_accuracy$time_bin+1]
+# df_accuracy$time_bin = factor(df_accuracy$time_bin,levels = g)
+# 
+# config$grCol=NULL
+# p_all$wave2 = dispLineGraph(df_accuracy,config,"y",c('time_bin'))+
+#   geom_hline(yintercept = 0, linetype = "solid", color = "black")+
+#   geom_text(data = annotation_df, size=7,
+#             aes(x = x_position, y = y_position, label = label), inherit.aes = FALSE)+
+#   theme(
+#     legend.position = 'none'
+#   )
+# 
+# 
+# config$ylim = round(seq(-0.15,0.15,0.05),2)
+# config$ylim_stride = 0.01
+# config$xlim = round(seq(1,eTime,1),2)
+# config$xlim_stride = 0.5
+# 
+# p_all$wave2 = setEmptyStyle(p_all$wave2,config,size_font=60)
+# # scale_x_continuous(breaks = config$xlim)
+# 
+# # print(p)
+# 
+# p_all$wave2$size = c(8,6)
+
+
+```
+
+### Heatmap
+```{r, message=FALSE, echo=FALSE,warning=FALSE}
+
+for(phaseType in c('peaks','troughs')){
+  
+  time=df[[paste0("wave_onset_",phaseType,"_st")]]
+  for(iTime in 0:eTime){
+    df[(time>=iTime)&(time<iTime+1),]["time_bin"]=iTime
+  }
+  
+  df_accuracy = df
+  df_accuracy = df_accuracy[df_accuracy$time_bin >= 0,]
+  df_accuracy = df_accuracy[df_accuracy$time_bin < eTime,]
+  
+  # df_accuracy$y = df_accuracy$P.T2.T1._smooth_norm
+  df_accuracy$y = df_accuracy$y_resid_smooth_norm
+  
+  df_accuracy = aggregate(y ~ time_bin*lag*session, data = df_accuracy, FUN = 'mean')
+  df_accuracy$time_bin = g[df_accuracy$time_bin+1]
+  df_accuracy$time_bin = factor(df_accuracy$time_bin,levels = g)
+  
+  for(iSession in unique(df_accuracy$session)){
+    
+    p = ggplot(df_accuracy[df_accuracy$session==iSession,], 
+               aes(x = time_bin, y = lag,fill=y)) +
+      geom_tile(color = "white") +
+      scale_fill_distiller(palette = "RdBu", direction = -1)+
+      scale_fill_gradient2(
+        low = "#2C3E94",
+        mid = "white",
+        high = "#B22222",
+        midpoint = 0,
+        name = "Accuracy diff. from mean",
+        limits = c(-0.3, 0.3)
+      )+
+      theme_minimal()+
+      xlab("Time[s]")+ylab("Lag")+
+      guides(fill = guide_colorbar(
+        barwidth = 1,
+        barheight = 20,
+        title.position = "right",
+        title.theme = element_text(angle = -90)
+      ))+
+      theme(
+        axis.text.x = element_text(angle = 30, hjust = 0.8)
+      )
+    config$ylim = round(seq(1,5,1),2)
+    config$ylim_stride = 0.1
+    config$xlim = round(seq(0,eTime,1),2)
+    config$xlim_stride = 0.1
+    config$title = iSession
+    
+    p = setEmptyStyle(p,config,size_font=60)+
+      # scale_x_continuous(breaks = g[1:eTime])+
+      coord_fixed()+
+      ggtitle(iSession)
+    
+    # print(p)
+    p$size=c(8,6)
+    p_all[[paste0("heatmap_wave_",phaseType,'_',gsub("-", "_", iSession))]]=p
+    
+  }
+}
+
+```
+
+## Combine figs
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+p_all$tmp_fig0_1 = combineGraphs2(c("accuracy_T2T1_diff","accuracy_T2T1"),p_all,c(2,1),c(1,2))
+p_all$tmp_fig0_2 = combineGraphs2(c("accuracy_T1","accuracy_T2"),p_all,c(2,1),c(1,1))
+
+p_all$Figure1 = combineGraphs2(c("accuracy_T1","accuracy_T2","tmp_fig0_1"),p_all,c(1,3),c(2,1,4))
+p_all$Figure1$size_mm = c(figsize_w,figsize_w)
+
+p_all$Figure2 = combineGraphs2(c("pupil","PD","PD_bin"),p_all,c(1,3),c(3,1,2))
+p_all$Figure2$size_mm = c(figsize_w,200)
+
+p_all$tmp_fig2_1 = combineGraphs2(c("pupil_troughs","wave_troughs"),p_all,c(2,1),c(1,2))
+p_all$tmp_fig2_2 = combineGraphs2(c("heatmap_wave_troughs_T1_active","heatmap_wave_troughs_T1_passive"),p_all,c(2,1),c(1,1))
+# p_all$tmp_fig2$size=c(6,10)
+
+p_all$Figure3 = combineGraphs2(c("tmp_fig2_1","tmp_fig2_2"),p_all,c(1,2),c(1,1))
+p_all$Figure3$size_mm = c(figsize_w,figsize_w)
+
+p_all$tmp_fig3_1 = combineGraphs2(c("pupil_peaks","wave_peaks"),p_all,c(2,1),c(1,2))
+p_all$tmp_fig3_2 = combineGraphs2(c("heatmap_wave_peaks_T1_active","heatmap_wave_peaks_T1_passive"),p_all,c(2,1),c(1,1))
+# p_all$tmp_fig2$size=c(6,10)
+
+p_all$SupFigure1 = combineGraphs2(c("tmp_fig3_1","tmp_fig3_2"),p_all,c(1,2),c(1,1))
+p_all$SupFigure1$size_mm = c(figsize_w,figsize_w)
+
+
+```
+
+
+# Experiment 2
+```{r, message=FALSE, echo=FALSE,warning=FALSE,include=FALSE}
+
+expFolder = paste0(rootFolder,"AuditoryAttentionalBlink_realtime/analysis/data")
+
+folderName = list.files(expFolder, full.names=T)
+folderName = folderName[length(folderName)]
+
+date = unlist(strsplit(folderName,"/"))
+date = date[length(date)]
+
+dataFolder = paste0(expFolder,"AuditoryAttentionalBlink_realtime/data/",date,"/")
+saveFolder = paste0("figure/",format(Sys.time(), '%Y%m%d'),"/")
+
+cfg = jsonlite::fromJSON(paste0(folderName,"/cfg.json"))
+
+figcount = 1
+
+sTime = cfg$TIME_START
+eTime = cfg$TIME_END
+analysisWin = 1
+mmFlg = cfg$mmFlag
+
+subFlg = F
+nsFlag = T
+saveFig = T
+blinkFlg = F
+normFlg = T
+
+if(!dir.exists(saveFolder)){
+  dir.create(saveFolder)
+}
+
+g2 = c('1','2','3','4','5')
+g2 = c(80,160,240,320,400)
+
+g3 = c('No-target','T1 only','T2 only','Both')
+g4 = c('Behavior')
+
+g5 = c('SBP','LBP')
+
+config <- list(lim_x = c(0,1),
+               lim_y = c(2,4),
+               alpha = 0.1,
+               stride = 0.1,
+               label_x = "Time [sec]",
+               label_y = "Pupil size[a.u.]",
+               title = "",
+               linetype = T,
+               shape=F,
+               # grCol = c("#738CD9","#222222")
+               # grCol = c("#AB004A","#222222")
+               # grCol = c("#E69F00","#738CD9")
+               grCol = c('Black','gray')
+               
+)
+
+```
+
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df <- load_json_dataframe(folderName, "df.json")
+df_pse_thre <- load_json_dataframe0(folderName, "df_pse_thre.json")
+
+```
+
+### T1 response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+config$grCol = c("#4c72b0","#c44e52")
+config$label_x=""
+config$label_y="Accuracy(T1)"
+
+df_accuracy_T1_exp2 = df
+df_accuracy_T1_exp2 = df_accuracy_T1_exp2[(df_accuracy_T1_exp2$condition=="T1_only")|(df_accuracy_T1_exp2$condition=="Both"),]
+
+df_accuracy_T1_exp2 = aggregate(hit_t1 ~ sub*condition*analysis, data = df_accuracy_T1_exp2, FUN = 'mean')
+
+p_all$accuracy_T1_exp2 = dispLineGraph(df_accuracy_T1_exp2,config,"hit_t1",c('condition',"analysis"))+
+  theme(legend.position = "none")
+
+config$ylim = round(seq(0.86,1,0.02),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,2,1),2)
+config$xlim_stride = 0.5
+
+p_all$accuracy_T1_exp2 = setEmptyStyle(p_all$accuracy_T1_exp2,config)
+p_all$accuracy_T1_exp2$size = c(8,10)
+
+stat_t1_exp2=NULL
+x1 = df_accuracy_T1_exp2[(df_accuracy_T1_exp2$condition=="T1_only")&(df_accuracy_T1_exp2$analysis=="LBP"),]$hit_t1
+x2 = df_accuracy_T1_exp2[(df_accuracy_T1_exp2$condition=="T1_only")&(df_accuracy_T1_exp2$analysis=="SBP"),]$hit_t1
+
+stat_t1_exp2$T1_only = getTtestSummary(x1,x2)
+
+x0 = df_accuracy_T1_exp2[(df_accuracy_T1_exp2$condition=="Both")&(df_accuracy_T1_exp2$analysis=="LBP"),]$hit_t1
+x2 = df_accuracy_T1_exp2[(df_accuracy_T1_exp2$condition=="Both")&(df_accuracy_T1_exp2$analysis=="SBP"),]$hit_t1
+
+stat_t1_exp2$Both = getTtestSummary(x1,x2)
+
+  
+
+```
+
+### T2 response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy_T2_exp2 = df
+df_accuracy_T2_exp2 = df_accuracy_T2_exp2[(df_accuracy_T2_exp2$condition=="T2_only")|(df_accuracy_T2_exp2$condition=="Both"),]
+
+df_accuracy_T2_exp2 = aggregate(hit_t2 ~ sub*condition*analysis, data = df_accuracy_T2_exp2, FUN = 'mean')
+
+config$label_y="Accuracy(T2)"
+p_all$accuracy_T2_exp2 = dispLineGraph(df_accuracy_T2_exp2,config,"hit_t2",c('condition',"analysis"))
+  # theme(legend.position = "none")
+
+config$ylim = round(seq(0.5,1,0.1),2)
+config$ylim_stride = 0.01
+config$xlim = round(seq(1,2,1),2)
+config$xlim_stride = 0.5
+
+p_all$accuracy_T2_exp2 = setEmptyStyle(p_all$accuracy_T2_exp2,config)
+p_all$accuracy_T2_exp2$size = c(8,10)
+
+stat_t2_exp2=NULL
+x1 = df_accuracy_T2_exp2[(df_accuracy_T2_exp2$condition=="T2_only")&(df_accuracy_T2_exp2$analysis=="LBP"),]$hit_t2
+x2 = df_accuracy_T2_exp2[(df_accuracy_T2_exp2$condition=="T2_only")&(df_accuracy_T2_exp2$analysis=="SBP"),]$hit_t2
+
+stat_t2_exp2$T2_only = getTtestSummary(x1,x2)
+
+x0 = df_accuracy_T2_exp2[(df_accuracy_T2_exp2$condition=="Both")&(df_accuracy_T2_exp2$analysis=="LBP"),]$hit_t2
+x2 = df_accuracy_T2_exp2[(df_accuracy_T2_exp2$condition=="Both")&(df_accuracy_T2_exp2$analysis=="SBP"),]$hit_t2
+
+stat_t2_exp2$Both = getTtestSummary(x1,x2)
+
+
+```
+
+### P(T2|T1) response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy_T1T2_exp2 = df
+df_accuracy_T1T2_exp2 = df_accuracy_T1T2_exp2[df_accuracy_T1T2_exp2$condition=="Both",]
+df_accuracy_T1T2_exp2 = aggregate(y_resid_PD ~ sub*lag_cond*analysis, data = df_accuracy_T1T2_exp2, FUN = 'mean')
+
+anovakun(df_accuracy_T1T2_exp2,"sAB",long=T, peta=T)
+anova_PDregressout_exp2 = forDrawingSigANOVA
+anovaTable$anova_PDregressout_exp2=anova_PDregressout_exp2
+
+df_accuracy_T1T2_exp2$sub = factor(df_accuracy_T1T2_exp2$sub ,levels = unique(df_accuracy_T1T2_exp2$sub))
+df_accuracy_T1T2_exp2$lag_cond = factor(df_accuracy_T1T2_exp2$lag_cond,levels = unique(df_accuracy_T1T2_exp2$lag_cond))
+df_accuracy_T1T2_exp2$analysis = factor(df_accuracy_T1T2_exp2$analysis,levels = unique(df_accuracy_T1T2_exp2$analysis))
+
+bf_table_PDregressout_exp2 = anovaBF(y_resid_PD ~ lag_cond*analysis + sub, data=df_accuracy_T1T2_exp2, whichRandom = "sub",progress=FALSE)
+anovaTable$bf_table_PDregressout_exp2=bf_table_PDregressout_exp2
+
+df_accuracy_T1T2_exp2 = df
+df_accuracy_T1T2_exp2 = df_accuracy_T1T2_exp2[df_accuracy_T1T2_exp2$condition=="Both",]
+
+df_accuracy_T1T2_exp2$n=1
+
+fit = quickpsy(df_accuracy_T1T2_exp2, lag_cond, P.T2.T1., n, 
+               grouping = c("analysis"), 
+               prob=0.75, 
+               bootstrap = "none",
+)
+
+psy_data = data.frame(
+  analysis = fit$curves$analysis,
+  x = fit$curves$x,
+  y = fit$curves$y
+)
+
+df_accuracy_T1T2_exp2 = aggregate(P.T2.T1. ~ sub*lag_cond*analysis, data = df_accuracy_T1T2_exp2, FUN = 'mean')
+# df_accuracy = aggregate(y_resid ~ sub*lag_cond*analysis, data = df_accuracy, FUN = 'mean')
+
+anovakun(df_accuracy_T1T2_exp2,"sAB",long=T, peta=T)
+anova_BP_exp2 = forDrawingSigANOVA
+anovaTable$anova_BP_exp2=anova_BP_exp2
+
+df_accuracy_T1T2_exp2$sub = factor(df_accuracy_T1T2_exp2$sub ,levels = unique(df_accuracy_T1T2_exp2$sub))
+df_accuracy_T1T2_exp2$lag_cond = factor(df_accuracy_T1T2_exp2$lag_cond,levels = unique(df_accuracy_T1T2_exp2$lag_cond))
+df_accuracy_T1T2_exp2$analysis = factor(df_accuracy_T1T2_exp2$analysis,levels = unique(df_accuracy_T1T2_exp2$analysis))
+
+bf_table_exp2 = anovaBF(P.T2.T1. ~ lag_cond*analysis + sub, data=df_accuracy_T1T2_exp2, whichRandom = "sub",progress=FALSE)
+anovaTable$bf_table_exp2=bf_table_exp2
+
+# df_accuracy = aggregate(P.T2.T1. ~ sub*analysis, data = df_accuracy, FUN = 'mean')
+# anovakun(df_accuracy,"sA",long=T, peta=T)
+
+config$line=F
+config$label_y="Accuracy(T2|T1)"
+config$label_y="Lag"
+config$grCol =  c("#4c72b0","#c44e52")
+
+p_all$accuracy_T2T1_exp2 = dispLineGraph(df_accuracy_T1T2_exp2,config,"P.T2.T1.",c('lag_cond',"analysis"),markerSize = 8)+
+  geom_line(data = psy_data,
+            aes(x=x,y=y,group=analysis))
+# +
+  # geom_segment(data = df_pse_thre_ave,
+  #              aes(x = threshold, xend = threshold),
+  #              y = 0, yend = 1, linetype="dashed",size=0.1)+
+  # geom_text(data = df_pse_thre_ave, 
+  #           aes(x = 3, y = y,
+  #               label=paste0('PSE = ',round(threshold, digits = 1))),size = 3) +
+  # theme(
+  #   legend.position = c(0,1),
+  #   legend.justification = c(0,1)
+  # )
+
+config$ylim = round(seq(0.3,0.8,0.1),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+p_all$accuracy_T2T1_exp2 = setEmptyStyle(p_all$accuracy_T2T1_exp2,config)
+p_all$accuracy_T2T1_exp2$size = c(8,10)
+
+A <- na.omit(df_pse_thre$threshold_boot[df_pse_thre$analysis=="LBP"])
+Bv <- na.omit(df_pse_thre$threshold_boot[df_pse_thre$analysis=="SBP"])
+
+diffs <- replicate(20000, sample(A,1) - sample(Bv,1))
+title = paste0("95% CI[",round(quantile(diffs,0.025),3),",",round(quantile(diffs,0.975),3),"]")
+
+p <- ggplot(df_pse_thre, aes(x = threshold_boot, fill = analysis)) +
+  geom_histogram(
+    aes(y = after_stat(count / sum(count))),
+    bins = 100,
+    position = "identity",
+    alpha = .6
+  ) +
+  scale_fill_manual(values = config$grCol) +
+  xlab("PSE") +
+  ylab("Probability") +
+  ggtitle(title)+
+  theme(legend.justification=c(0,1), legend.position=c(0,1))+
+  geom_point(aes(x=mean(df_pse_thre[df_pse_thre$analysis == "SBP",]$thresholds),
+                 y=0.05),shape=6,size=6,color=config$grCol[2])+
+  geom_point(aes(x=mean(df_pse_thre[df_pse_thre$analysis == "LBP",]$thresholds),
+                 y=0.05),shape=6,size=6,color=config$grCol[1])
+
+config$ylim = round(seq(0,0.05,0.01),4)
+config$ylim_stride = 0.01
+config$xlim = round(seq(2,4,0.5),4)
+# config$xlim = round(seq(0,5,1),4)
+config$xlim_stride = 0.1
+
+p = setEmptyStyle(p,config)+
+  scale_x_continuous(breaks = config$xlim)+
+  theme(
+    plot.title = element_text(size = 20)
+  )
+
+p_all$pseBootstrap = p
+p_all$pseBootstrap$size = c(8,8)
+
+
+
+
+df_accuracy_T1T2 = df
+df_accuracy_T1T2 = df_accuracy_T1T2[df_accuracy_T1T2$condition=="Both",]
+
+df_accuracy_T1T2 = aggregate(P.T2.T1. ~ sub*lag_cond*analysis, data = df_accuracy_T1T2, FUN = 'mean')
+
+df_diff = df_accuracy_T1T2[df_accuracy_T1T2$analysis=="SBP",]
+df_diff$P.T2.T1.=df_diff$P.T2.T1.-df_accuracy_T1T2[df_accuracy_T1T2$analysis=="LBP",]$P.T2.T1.
+
+m <- lmer( P.T2.T1. ~ lag_cond + (1| sub), data = df_diff)
+
+sm = summary(m)
+coef_df <- extract_coef_info(sm, c("lag_cond"))
+    
+intercept = sm$coefficients["(Intercept)", "Estimate"]
+
+lag_vals <- seq(1, 5, by = 0.1)
+
+ribbon_df = data.frame(
+  lag = lag_vals,
+  y = intercept + sm$coefficients["lag_cond", "Estimate"] * lag_vals,
+  ymin = intercept- sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["lag_cond", "Estimate"] * lag_vals,
+  ymax = intercept + sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["lag_cond", "Estimate"] * lag_vals
+)
+
+config$grCol=NULL
+p_all$accuracy_T2T1_diff = dispLineGraph(df_diff,config,"P.T2.T1.",c('lag_cond'))+
+  geom_abline(intercept = intercept,
+              slope = sm$coefficients["lag_cond", "Estimate"], size = 0.5,color="black")+
+  geom_ribbon(data = ribbon_df, aes(x = lag, y=y,ymin = ymin, ymax = ymax), inherit.aes = FALSE,alpha = 0.2)+
+   theme(
+    legend.position = 'none'
+  )
+config$ylim = round(seq(0,0.1,0.025),3)
+config$ylim_stride = 0.01
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+p_all$accuracy_T2T1_diff = setEmptyStyle(p_all$accuracy_T2T1_diff,config)
+p_all$accuracy_T2T1_diff$size = c(8,10)
+
+```
+
+
+
+## Baseline Pupil size
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_pupil <- load_json_dataframe(folderName, "df_pupil.json")
+
+```
+
+### time-course of pupil around T1
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+g = c("miss","hit")
+
+# df_pupil = df_pupil[df_pupil$session=="T1-active",]
+df_pupil$data_x = df_pupil$time
+# df_pupil$sdt = g[df_pupil$P.T2.T1.+1]
+
+config$label_x="Time from T2 onset[s]"
+config$label_y="Pupil size[mm]"
+config$linetype=F
+config$grCol=c('#d97168','gray')
+config$lim_x=c(-1.2,1.2)
+config$lim_y=c(0.1,0.6)
+# config$grCol = c("#c44e52")
+
+# p_all$pupil_LBP = disp(df_pupil[df_pupil["analysis"]=="LBP",], config, "PDR_mm", T, c("analysis"))+
+#   geom_vline(xintercept = 0, linetype = "solid", color = "black") +
+#   facet_wrap(. ~analysis)+
+#   theme(legend.position = "none")
+# 
+# # config$ylim = round(seq(0,0.32,0.08),2)
+# config$ylim = round(seq(5.4,6.,0.1),2)
+# # config$ylim = round(seq(0.1,0.6,0.1),2)
+# config$ylim_stride = 0.01
+# config$xlim = round(seq(-1.,1.,0.25),2)
+# config$xlim_stride = 0.1
+# 
+# p_all$pupil_LBP = setEmptyStyle(p_all$pupil_LBP,config)+
+#   scale_x_continuous(breaks = config$xlim)
+# 
+# # p_all$pupil$size=c(10,5)
+# 
+# config$grCol = c("#4c72b0")
+
+# p_all$pupil_SBP = disp(df_pupil[df_pupil["analysis"]=="SBP",], config, "PDR_mm", T, c("analysis"))+
+#   geom_vline(xintercept = 0, linetype = "solid", color = "black") +
+#   facet_wrap(. ~analysis)+
+#   theme(legend.position = "none")
+
+# config$ylim = round(seq(-0.4,0.2,0.1),2)
+# # config$ylim = round(seq(0.1,0.6,0.1),2)
+# config$ylim_stride = 0.01
+
+
+
+# p_all$pupil_SBP = setEmptyStyle(p_all$pupil_SBP,config)+
+#   scale_x_continuous(breaks = config$xlim)
+
+# p_all$pupil$size=c(10,5)
+
+# p_all$pupil = combineGraphs2(c("pupil_LBP","pupil_SBP"),p_all,c(1,2),c(1,1))
+# p_all$pupil$size_mm = c(figsize_w/2,231.77)
+
+config$grCol = c("#c44e52","#4c72b0")
+p_all$pupil = disp(df_pupil, config, "PDR_mm", T, c("analysis"))+
+  geom_vline(xintercept = 0, linetype = "solid", color = "black")
+  # facet_wrap(. ~analysis)+
+  # theme(legend.position = "none")
+
+config$ylim = round(seq(5.4,6.,0.1),2)
+# config$ylim = round(seq(0.1,0.6,0.1),2)
+config$ylim_stride = 0.01
+config$xlim = round(seq(-1.0,0.5,0.25),2)
+config$xlim_stride = 0.1
+
+p_all$pupil = setEmptyStyle(p_all$pupil,config)+
+  scale_x_continuous(breaks = config$xlim)
+
+p_all$pupil$size=c(8,10)
+
+df_pupil[df_pupil$time<=0,]
+
+df_pupil_ave = aggregate(. ~ sub*analysis, data = df_pupil[(df_pupil$time<=0.5)&(df_pupil$time>-1),], FUN = 'mean')
+
+x1 = df_pupil_ave[(df_pupil_ave$analysis=="SBP"),]$PDR_mm
+x2 = df_pupil_ave[(df_pupil_ave$analysis=="LBP"),]$PDR_mm
+
+anovaTable$ttest_pupil_size_exp2= getTtestSummary(x1,x2)
+
+annotation_df <- data.frame(
+  analysis=c("LBP"),
+  start = c("LBP"),
+  end = c("SBP"),
+  y = 5.95,
+  label = paste0("p=",round(ttest$ttest$p.value,3))
+)
+
+p_all$pupilSize_exp2 = dispLineGraph(df_pupil_ave,config,"PDR_mm",c("analysis"),markerSize = 8)+
+  geom_signif(data=annotation_df,
+              aes(xmin=start,xmax=end,annotations=label,y_position=y),
+              textsize = 5, size=0.2, tip_length = 0.00,family=fontFamily,manual = TRUE)+
+  xlab("")
+# +
+#   geom_point(data=df_pupil_ave,aes(x=analysis,y=PDR_mm,group=sub),size = 1,alpha=0.5)+
+#   geom_line(data=df_pupil_ave,aes(x=analysis,y=PDR_mm,group=sub),size = 0.5,alpha=0.5)
+
+config$ylim = round(seq(5.4,6.,0.1),2)
+config$ylim_stride = 0.05
+config$xlim = round(seq(1,2,1),2)
+config$xlim_stride = 0.5
+
+p_all$pupilSize_exp2 = setEmptyStyle(p_all$pupilSize_exp2,config)
+p_all$pupilSize_exp2$size=c(3,10)
+
+
+```
+
+### pupil bin
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy = df
+df_accuracy = df_accuracy[df_accuracy$condition=="Both",]
+df_accuracy$PD_bin = df_accuracy$PD_bin+1
+df_accuracy$y = df_accuracy$P.T2.T1.
+# df_accuracy$y = df_accuracy$y_resid
+
+
+tmp_df = aggregate( PD ~ sub*analysis, data = df_accuracy, FUN = 'mean')
+
+x1=tmp_df[tmp_df$analysis=="SBP",]$PD
+x2=tmp_df[tmp_df$analysis=="LBP",]$PD
+
+merged <- merge(
+  tmp_df[tmp_df$analysis=="SBP", ], 
+  tmp_df[tmp_df$analysis=="LBP", ],
+  by = "sub",
+  suffixes = c("_SBP", "_LBP")
+)
+
+merged$marker <- ifelse(
+  merged$PD_SBP < merged$PD_LBP,
+  "SBP",
+  "LBP"
+)
+
+tmp_df$marker <- "SBP"
+tmp_df$marker[tmp_df$sub %in% merged$sub[merged$marker == "LBP"]] <- "LBP"
+
+# p_all$pupilSize_exp2 p= dispLineGraph(tmp_df,config,"PD",c("analysis"),markerSize = 8)
+# p_all$pupilSize_exp2 = ggplot(tmp_df,aes(x=analysis, y=PD,group=analysis))+
+# geom_boxplot()+
+# # ylab("Streak time [s]")+
+# geom_point(aes(x=analysis,group=sub),size = 1,alpha=0.5)+
+# geom_line(aes(x=analysis,group=sub,color=marker),size = 0.5,alpha=0.5)
+# 
+# config$ylim = round(seq(3.5,7.5,0.5),2)
+# config$ylim_stride = 0.05
+# config$xlim = round(seq(1,2,1),2)
+# config$xlim_stride = 0.5
+# 
+# p_all$pupilSize_exp2 = setEmptyStyle(p_all$pupilSize_exp2,config)
+# p_all$pupilSize_exp2$size=c(5,10)
+
+ttest = getTtestSummary(x1,x2)
+  
+modelList = c(
+  "y ~ PD_bin + (1| sub)"
+)
+
+estimateAll_exp2 = NULL
+ribbon_df = NULL
+for(iSession in unique(df_accuracy$analysis)){
+  for( m in modelList){
+    
+    eval(parse(text=paste0(" m <- lmer(", modelList, ", data = df_accuracy[df_accuracy$analysis==iSession,])")))
+    sm = summary(m)
+    # print(sm$coefficients)
+    terms <- c("PD")
+    coef_df <- extract_coef_info(sm, c("PD_bin"))
+    
+    intercept = sm$coefficients["(Intercept)", "Estimate"]
+    coef_df$formula = c(sm$call$formula)
+    coef_df$analysis = iSession
+    coef_df$intercept = intercept
+    coef_df$slope = sm$coefficients["PD_bin", "Estimate"]
+    coef_df$intercept_min = intercept - sm$coefficients["(Intercept)", "Std. Error"]
+    coef_df$intercept_max = intercept + sm$coefficients["(Intercept)", "Std. Error"]
+    coef_df$x_position = 1.5
+    coef_df$y_position = mean(df_accuracy[(df_accuracy$analysis==iSession)&
+                (df_accuracy$PD_bin==1),]$y)+0.03
+    
+    if (round(coef_df$pVal,4)==0){
+      coef_df$pVal = 'p<0.001'
+    }else{
+      coef_df$pVal = paste0('p=',round(coef_df$pVal,4))
+    }
+
+    estimateAll_exp2 = rbind(estimateAll_exp2,coef_df)
+    
+    pupil_vals <- seq(1, 5, by = 0.1)
+    ribbon_df = rbind(ribbon_df,
+                      data.frame(
+                        analysis = iSession,
+                        pupil_bin = pupil_vals,
+                        y = intercept + sm$coefficients["PD_bin", "Estimate"] * pupil_vals,
+                        ymin = intercept- sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["PD_bin", "Estimate"] * pupil_vals,
+                        ymax = intercept + sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["PD_bin", "Estimate"] * pupil_vals
+                      ))
+    
+  }
+}
+
+df_accuracy = aggregate(y ~ sub*analysis*PD_bin, data = df_accuracy, FUN = 'mean')
+
+config$label_x="Pupil bin"
+config$label_y="Accuracy"
+config$grCol = c("#c44e52","#4c72b0")
+ 
+
+config$linetype=F
+p_all$PD_bin_exp2 = dispLineGraph(df_accuracy,config,"y",c('PD_bin',"analysis"),markerSize = 8)+
+  geom_abline(data=estimateAll_exp2,aes(intercept = intercept, slope = slope,color=analysis), size = 0.5)+
+  geom_ribbon(data = ribbon_df, aes(x = pupil_bin, y=y,ymin = ymin, ymax = ymax, fill = analysis), alpha = 0.2)+
+  # scale_color_manual(values = c("SBP" = "#E69F00", "LBP" = "#738CD9"))+
+  geom_text(data = estimateAll_exp2, size=5,
+          aes(x = x_position, y = y_position, label = pVal, color=analysis), inherit.aes = FALSE)
+
+# print(p_all$PD_bin)
+config$ylim = round(seq(0.5,0.7,0.05),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+p_all$PD_bin_exp2 = setEmptyStyle(p_all$PD_bin_exp2,config)
+p_all$PD_bin_exp2$size=c(10,10)
+
+```
+
+
+### Combine figs
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+p_all$SupFigure2 = combineGraphs2(c("accuracy_T1_exp2","accuracy_T2_exp2"),p_all,c(1,2),c(1,1))
+p_all$SupFigure2$size_mm = c(figsize_w,200)
+
+p_all$tmp_fig0_1 = combineGraphs2(c("accuracy_T2T1_diff","accuracy_T2T1_exp2"),p_all,c(2,1),c(1,2))
+
+
+p_all$tmp_fig0_2 = combineGraphs2(c("pupil","pupilSize_exp2"),p_all,c(1,2),c(1,1))
+
+p_all$tmp_fig0_3 = combineGraphs2(c("accuracy_T2T1_exp2","pseBootstrap"),p_all,c(1,2),c(2,1))
+
+p_all$Figure4 = combineGraphs2(c("tmp_fig0_2","accuracy_T2T1_exp2"),p_all,c(1,2),c(2,1))
+p_all$Figure4$size_mm = c(figsize_w,200)
+
+```
+
+# Figure
+```{r, message=FALSE, echo=FALSE, warning=FALSE, fig.width = 10, fig.height = 5,include=FALSE}
+
+if(saveFig){
+  mmName = names(p_all)
+  for(iFig in 1:length(mmName)){
+    
+    if("size" %in% names(p_all[[iFig]])){
+      unitName = "in"
+      varName = "size"
+      
+    }else if("size_mm" %in% names(p_all[[iFig]])){
+      unitName = "mm"  
+      varName = "size_mm"
+    }else{
+      next
+    }
+    ggsave(file =paste0(saveFolder,iFig,"_",mmName[iFig],".pdf"),
+           plot = p_all[[iFig]],
+           width = p_all[[iFig]][varName][[1]][1], 
+           height = p_all[[iFig]][varName][[1]][2],
+           units = unitName)
+    plot(p_all[[iFig]])
+    # dev.off()
+    
+  }
+}
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, fig.width = 10, fig.height = 5,include=FALSE}
+
+res <- list(
+
+  dat_exp1 = dat_exp1, 
+  dat_exp2 = dat_exp2, 
+  df_sub = df_sub,
+
+  # exp1 key objects
+  df_accuracy_T1 = df_accuracy_T1,
+  df_accuracy_T2 = df_accuracy_T2,
+  df_accuracy_T1T2 = df_accuracy_T1T2,
+  PT1T2_anova = PT1T2_anova,
+  PT1T2_anova_post=PT1T2_anova_post,
+  bf_table = bf_table,
+  anova_BP = anova_BP,
+  bf_table_BP = bf_table_BP,
+  ttest_BP = ttest_BP,
+  estimateAll = estimateAll,
+  annotation_df=annotation_df,
+  annotation_df_wave_peaks=annotation_df_wave$peaks,
+  annotation_df_wave_troughs=annotation_df_wave$troughs,
+  
+  # exp2 key objects
+  df_accuracy_T1_exp2 = df_accuracy_T1_exp2,
+  df_accuracy_T2_exp2 = df_accuracy_T2_exp2,
+  anova_BP_exp2 = anova_BP_exp2,
+  bf_table_exp2 = bf_table_exp2,
+  df_pse_thre = df_pse_thre,
+  diffs = diffs,
+  estimateAll_exp2 = estimateAll_exp2,
+
+  anovaTable=anovaTable,
+  
+  stat_t1_exp2_T1_only=stat_t1_exp2$T1_only,
+  stat_t1_exp2_T1_both=stat_t1_exp2$Both,
+  stat_t2_exp2_T2_only=stat_t2_exp2$T2_only,
+  stat_t2_exp2_T1_both=stat_t2_exp2$Both
+)
+
+saveRDS(res, "results_objects.rds")
+```

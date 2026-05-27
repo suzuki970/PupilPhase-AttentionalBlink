@@ -1,0 +1,97 @@
+---
+title: "Figures' note for auditory attentional blink"
+author: "Yuta Suzuki, Hsin-I Liao"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  # slidy_presentation:
+  word_document:
+     # css: style.css
+     reference_docx: doc_templete.docx
+     
+params:
+  year: 2025
+# editor_options: 
+#   markdown: 
+#     wrap: 72
+
+---
+
+## Article information
+
+*Corresponding author: Yuta Suzuki
+NTT Communication Science Laboratories, NTT Corporation, Atsugi, Japan
+Tel: +81-046-240-3525, 
+E-mail:suzukiy970@gmail.com
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+res <- readRDS("results_objects.rds")
+list2env(res, envir = environment())
+
+```
+
+## Method
+### Participants
+A total of `r sum(df_sub$numOfSub)` volunteers (`r sum(df_sub$numOfMen)` men and `r sum(df_sub$numOfWomen)` women, aged `r min(c(dat_exp1$age,dat_exp2$age))`–`r max(c(dat_exp1$age,dat_exp2$age))` years, 
+, with a mean age = `r round(mean(c(dat_exp1$age,dat_exp2$age)),2)`, SD = `r round(sd(c(dat_exp1$age,dat_exp2$age)),2)`), 
+with a normal or corrected-to-normal vision and normal color vision (based on participants' self-report) participated in the experiments in total. 
+`r df_sub[df_sub$exp==1,'numOfSub']` volunteers participated in Experiment 1. Two participants were excluded as outliers if their T1 and T2 detection accuracy or false alarm (FA) rate exceeded a robust outlier criterion. Specifically, we first computed the median of each measure across participants. When the median was 1.0 (i.e., ceiling effects), we applied a z-score criterion based on the mean and standard deviation and excluded participants with $∣z∣$>3. Otherwise, we used the modified z-score based on the median absolute deviation (MAD) and excluded participants with $∣Mz∣$>3.5 (Iglewicz & Hoaglin, 1993). 
+`r df_sub[df_sub$exp==2,'numOfSub']` volunteers participated in Experiment 2. Five participants were excluded using the same criterion described above.
+All experimental procedures were in accordance with the ethical principles outlined in Research Ethics Committee of Nippon Telegraph and Telephone (NTT) Communication Science Laboratories. All participants provided written informed consent.  
+
+# Results
+## Experiment1
+### Behavioral data
+First, the accuracy for T1 and the probe (T2) were very high, indicating that participants were able to reliably discriminate the target sounds from the distractors (T1: M=`r round(mean(df_accuracy_T1$hit_t1),3)`, SD=`r round(sd(df_accuracy_T1$hit_t1),3)`, 
+Probe: M=`r round(mean(df_accuracy_T2$hit_t2),3)`, SD=`r round(sd(df_accuracy_T2$hit_t2),3)`; see Figure 1B and 1C). 
+To confirm the attentional blink (AB) effect, we conducted a two-way repeated-measures ANOVA with lag and session (T1-attend vs. T1-ignore) as within-subject factors. The analysis revealed a significant main effect of session (`r showAnovaSummary(PT1T2_anova,bf_table,4,2)`). 
+Post hoc analyses showed that, consistent with previous studies, probe detection probability significantly decreased in the T1-attend condition compared to the T1-ignore condition (ps < .05), except at lag 2 (p = `r round(PT1T2_anova_post[["A:B"]][["simtab"]][7,"p.col"],3)`) as shown in Figure 1D. 
+We also observed a significant main effect of lag (`r showAnovaSummary(PT1T2_anova,bf_table,2,1)`), 
+whereas the interaction between lag and session was not significant (`r showAnovaSummary(PT1T2_anova,bf_table,6,3)`).
+
+### Baseline pupil size
+
+To examine whether baseline pupil size influenced target detection, we compared pupil diameter prior to target onset between hit and miss trials. 
+Pupil time courses around target presentation are shown in Figure 2A. 
+Baseline pupil size was defined as the mean pupil diameter during the 1-second period preceding T2 onset. 
+The baseline pupil size was averaged across lag conditions and separated by response (hit vs. miss), as shown in Figure 2B. 
+The results showed that baseline pupil size was significantly smaller for hit trials compared to miss trials  (`r showAnovaSummary(anova_BP,bf_table_BP,4,2)`).
+Despite the non-significant interaction (`r showAnovaSummary(anova_BP,bf_table_BP,6,3)`), further analysis including Bayesian Factor statistics revealed that this effect was present only in the T1-attend condition (`r showTtestSummary(ttest_BP[["T1-active"]])`), but not in the T1-ignore condition (`r showTtestSummary(ttest_BP[["T1-passive"]])`).
+Furthermore, to examine the relationship between baseline pupil size and detection performance, trials were sorted according to baseline pupil size and divided into five bins from smallest to largest (following [#Kempen.2019]). Accuracy for each bin was plotted separately for each attention condition (Figure 2C). We found a significant correlation between baseline pupil size and probe detection probability in the T1-attend condition (`r estimateAll[1,'pVal']`), whereas no correlation was observed in the T1-ignore condition (`r estimateAll[2,'pVal']`).
+
+### Slow pupil change
+
+Next, we examined low-frequency pupil dynamics by applying a 0.15 Hz low-pass filter to the pupil signal (Figure 3A) as in line with previous reports linking to slow brain wave. 
+Constriction and dilation events (indicated by blue markers as example of constriction event in Figure 3A) were identified, and the time interval between each event and T1 onset was calculated. Trials were then grouped into 1-second time bins until 6 seconds relative to these events. 
+Pupil dynamics following constriction and dilation events are shown in Figure 3B and Supplementary Figure 1A. 
+Figure 3C shows the difference between bin-wise accuracy and overall accuracy (collapsed across lag).
+
+We found that the accuracy significantly improved immediately following pupil constriction. Specifically, in the T1-attend condition, accuracy was significantly higher during the 0–1s (`r annotation_df_wave_troughs[(annotation_df_wave_troughs$x_position==1)&(annotation_df_wave_troughs$session=="T1-active"),"descrip"]`) and 
+1–2s (`r annotation_df_wave_troughs[(annotation_df_wave_troughs$x_position==2)&(annotation_df_wave_troughs$session=="T1-active"),"descrip"]`). 
+In the T1-ignore condition, a significant improvement was observed in the 1–2s (`r annotation_df_wave_troughs[(annotation_df_wave_troughs$x_position==2)&(annotation_df_wave_troughs$session=="T1-passive"),"descrip"]`). 
+In T1-attend condition, a marginally significant decrease in accuracy was observed during the 4–5 s interval 
+(`r annotation_df_wave_troughs[(annotation_df_wave_troughs$x_position==5)&(annotation_df_wave_peaks$session=="T1-active"),"descrip"]`. 
+In contrast, no significant changes in accuracy were observed following dilation events 
+(1–2s: `r annotation_df_wave_troughs[(annotation_df_wave_troughs$phaseType=="peaks")&(annotation_df_wave_troughs$x_position==2)&(annotation_df_wave_troughs$session=="T1-active"),"descrip"]`;
+1–2s: `r annotation_df_wave_troughs[(annotation_df_wave_troughs$phaseType=="peaks")&(annotation_df_wave_troughs$x_position==2)&(annotation_df_wave_troughs$session=="T1-passive"),"descrip"]`).
+
+
+## Experiment2
+## Behavioral data
+
+To validate the improvement in AB detection following PD phase observed in Experiment 1, we implemented real-time pupil monitoring and presented T1 at specific phases of slow pupil fluctuations (0.15 Hz), corresponding to PD or PC phase. Figure 4A shows pupil dynamics immediately preceding T1 presentation in both conditions. As intended, T1 was successfully presented within 0–1 s after the onset of PD or PC phase. Detection accuracy for T1 and T2 sequence remained high 
+(T1: M=`r round(mean(df_accuracy_T1_exp2$hit_t1),3)`, SD=`r round(sd(df_accuracy_T1_exp2$hit_t1),3)`, 
+Probe: M=`r round(mean(df_accuracy_T2_exp2$hit_t2),3)`, SD=`r round(sd(df_accuracy_T2_exp2$hit_t2),3)`; 
+see Supplementary Figure 2). 
+We confirmed that there was no significant differences of the averaged pupil size around T1 onset between PD and PC phase as shown in Figure 4B (`r showTtestSummary(anovaTable$ttest_pupil_size_exp2)`) 
+A two-way repeated-measures ANOVA examining the main effect of phase condition revealed that accuracy in the PC phase was significantly higher than in the PD phase 
+(`r showAnovaSummary(anova_BP_exp2,bf_table_exp2,4,2)`) as we expected according to the presentation timing manipulation. We estimated the lag threshold (50% of accuracy) from the fitted psychometric functions for each phase condition and assessed its uncertainty via parametric bootstrap (10,000 iterations). Figure 4C shows the bootstrap distributions of threshold estimates for each condition. The 95% bootstrap confidence interval for the threshold difference (PC – PD phase) was CI[`r round(quantile(diffs,0.025),3)`, `r round(quantile(diffs,0.975),3)`], indicating that the threshold in the PC phase was significantly higher than in the PD phase.
+
+
+
+### Baseline pupil size
+To further examine whether the relationship between baseline pupil size and detection performance observed in Experiment 1 could be replicated under real-time pupil-triggered presentation, we conducted the same bin-based analysis in Experiment 2. Trials were sorted according to baseline pupil size and divided into five bins from smallest to largest, following the same procedure as in Experiment 1. Detection accuracy for P(T2|T1) was then calculated separately for each bin and phase condition. Consistent with the results of Experiment 1, we again observed a significant correlation between baseline pupil size and probe detection probability in the PD (`r estimateAll_exp2[1,'pVal']`) and PD phase (`r estimateAll_exp2[2,'pVal']`).
+These results indicate that the relationship between ongoing pupil state and attentional blink performance was reproducible even when stimulus presentation was controlled in real time based on slow pupil dynamics.
+To remove the influence of baseline pupil size, we fitted a linear mixed-effects model predicting detection performance (see “Method”) from the baseline pupil size. Using these calculated residualized values, the main effect of phase factor remained significant even after controlling for baseline pupil diameter, indicating that the increased accuracy for P(T2|T1) cannot be explained solely by baseline pupil size (`r showAnovaSummary(anovaTable$anova_PDregressout_exp2,anovaTable$bf_table_PDregressout_exp2, 4,2)`).
+
+

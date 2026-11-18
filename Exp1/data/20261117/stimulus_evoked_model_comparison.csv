@@ -1,0 +1,7 @@
+session,session_label,comparison,reduced,full,lr_chi2,df,p,delta_aic_full_minus_reduced,delta_bic_full_minus_reduced
+T1-attend,T1-attend,add_pre_target_PD_phase,lag_subject,pre_target,24.19726860854007,6.0,0.0004803699237820668,-12.197268608540071,23.44623435408539
+T1-attend,T1-attend,add_post_T2_evoked_auc,pre_target,pre_plus_post_evoked,28.933008140626498,1.0,7.4925184059269e-08,-26.933008140626498,-20.99242431352195
+T1-attend,T1-attend,phase_after_post_evoked_auc,baseline_plus_post_evoked,pre_plus_post_evoked,5.109779576397614,5.0,0.4026300998714607,4.890220423602386,34.593139559123756
+T1-ignore,T1-ignore,add_pre_target_PD_phase,lag_subject,pre_target,8.802244150042043,6.0,0.18500897392802443,3.1977558499579573,38.84339442392502
+T1-ignore,T1-ignore,add_post_T2_evoked_auc,pre_target,pre_plus_post_evoked,13.942764408398943,1.0,0.00018846165014493267,-11.942764408398943,-6.001824646071327
+T1-ignore,T1-ignore,phase_after_post_evoked_auc,baseline_plus_post_evoked,pre_plus_post_evoked,5.9776497913981075,5.0,0.30839977042834016,4.0223502086018925,33.727049020240884

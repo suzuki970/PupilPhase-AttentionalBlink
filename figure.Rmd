@@ -1,0 +1,2179 @@
+---
+knit: (function(input, ...) rmarkdown::render(input, output_dir = file.path(dirname(input), "figure", format(Sys.time(), "%Y%m%d"), "output"), envir = globalenv()))
+title: "Figures' note for auditory attentional blink"
+author: "Yuta Suzuki, Hsin-I Liao"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  slidy_presentation:
+     
+params:
+  year: 2026
+
+---
+
+## Article information
+
+*Corresponding author: Yuta Suzuki
+NTT Communication Science Laboratories, NTT Corporation, Atsugi, Japan
+Tel: +81-046-240-3525, 
+E-mail:suzukiy970@gmail.com
+
+# Results
+# Experiment 1
+```{r, message=FALSE, echo=FALSE,warning=FALSE,include=FALSE}
+
+rootFolder = "./"
+
+if(!exists("dispLineGraph")){
+  source(paste0(rootFolder, "lib/common_profile.R"), local = TRUE)
+}
+
+expFolder = paste0(rootFolder,"Exp1/data")
+
+folderName = list.files(expFolder, full.names=T)
+folderName = folderName[length(folderName)]
+
+saveFolder = paste0("figure/",format(Sys.time(), '%Y%m%d'),"/")
+
+cfg = jsonlite::fromJSON(paste(readLines(paste0(folderName,"/cfg.json"), warn = FALSE), collapse = "\n"))
+
+recode_session <- function(x){
+  x <- as.character(x)
+  x[x == "T1-active"]  <- "T1-attend"
+  x[x == "T1-passive"] <- "T1-ignore"
+  x
+}
+load_json_df <- function(folder, pattern){
+  file_path <- list.files(folder, pattern = pattern, full.names = TRUE)[1]
+  json_data <- jsonlite::fromJSON(file_path)
+  json_data <- lapply(json_data, function(x){
+    if(is.list(x)) x[vapply(x, is.null, logical(1))] <- NA
+    unlist(x)
+  })
+  d <- as.data.frame(json_data)
+  if("session" %in% names(d)) d$session <- recode_session(d$session)
+  d
+}
+
+eTime = cfg$TIME_END
+saveFig = T
+
+if(!dir.exists(saveFolder)){
+  dir.create(saveFolder, recursive = TRUE)
+}
+
+
+config <- list(lim_x = c(0,1),
+               lim_y = c(2,4),
+               alpha = 0.1,
+               stride = 0.1,
+               label_x = "Time [sec]",
+               label_y = "Pupil size[a.u.]",
+               title = "",
+               linetype = T,
+               shape=F,
+               grCol = c('Black','gray')
+               
+)
+
+fit_pupil_bin_model_comparison <- function(df_accuracy_bin, group_var){
+  model_rows <- NULL
+  test_rows <- NULL
+  group_values <- unique(df_accuracy_bin[[group_var]])
+  
+  for(group_value in group_values){
+    df_model <- df_accuracy_bin[df_accuracy_bin[[group_var]] == group_value,]
+    df_model$PD_bin_c <- as.numeric(scale(df_model$PD_bin, center = TRUE, scale = FALSE))
+    
+    m_null <- lmer(y ~ 1 + (1 | sub), data = df_model, REML = FALSE)
+    m_linear <- lmer(y ~ PD_bin_c + (1 | sub), data = df_model, REML = FALSE)
+    m_u <- lmer(y ~ I(PD_bin_c^2) + (1 | sub), data = df_model, REML = FALSE)
+    models <- list(
+      null = m_null,
+      linear = m_linear,
+      u_only = m_u
+    )
+    
+    model_info <- data.frame(
+      group = group_value,
+      model = names(models),
+      AIC = sapply(models, AIC),
+      BIC = sapply(models, BIC),
+      stringsAsFactors = FALSE
+    )
+    model_info$delta_AIC <- model_info$AIC - min(model_info$AIC)
+    model_info$delta_BIC <- model_info$BIC - min(model_info$BIC)
+    model_info$best_AIC <- model_info$delta_AIC == 0
+    model_info$best_BIC <- model_info$delta_BIC == 0
+    model_rows <- rbind(model_rows, model_info)
+    
+    lrt_linear <- anova(m_null, m_linear)
+    lrt_u <- anova(m_null, m_u)
+    sm_u <- summary(m_u)
+    u_coef <- sm_u$coefficients["I(PD_bin_c^2)", "Estimate"]
+    u_t <- sm_u$coefficients["I(PD_bin_c^2)", "t value"]
+    u_df <- sm_u$coefficients["I(PD_bin_c^2)", "df"]
+    
+    test_rows <- rbind(
+      test_rows,
+      data.frame(
+        group = group_value,
+        linear_chisq = lrt_linear$Chisq[2],
+        linear_df = 1,
+        linear_p = lrt_linear$`Pr(>Chisq)`[2],
+        u_beta = u_coef,
+        u_chisq = lrt_u$Chisq[2],
+        u_df = 1,
+        u_p = lrt_u$`Pr(>Chisq)`[2],
+        u_t = u_t,
+        u_coef_df = u_df,
+        u_partial_r = sign(u_t) * sqrt(u_t^2 / (u_t^2 + u_df)),
+        best_AIC_model = model_info$model[which.min(model_info$AIC)],
+        best_BIC_model = model_info$model[which.min(model_info$BIC)],
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+  
+  list(models = model_rows, tests = test_rows)
+}
+
+fit_pupil_bin_maximal <- function(df_accuracy_bin, group_var){
+  rows <- NULL
+  for(group_value in unique(df_accuracy_bin[[group_var]])){
+    df_model <- df_accuracy_bin[df_accuracy_bin[[group_var]] == group_value,]
+    m_null <- lmer(y ~ 1 + (1 | sub), data = df_model, REML = FALSE)
+    m_bin <- lmer(y ~ PD_bin + (1 | sub), data = df_model, REML = FALSE)
+    m_null_slope <- suppressMessages(lmer(y ~ 1 + (PD_bin | sub), data = df_model, REML = FALSE))
+    m_bin_slope <- suppressMessages(lmer(y ~ PD_bin + (PD_bin | sub), data = df_model, REML = FALSE))
+    lrt <- anova(m_null, m_bin)
+    lrt_s <- anova(m_null_slope, m_bin_slope)
+    lrt_var <- anova(m_bin, m_bin_slope)
+    rows <- rbind(rows, data.frame(
+      group = group_value,
+      ri_chisq = lrt$Chisq[2], ri_p = lrt$`Pr(>Chisq)`[2],
+      max_chisq = lrt_s$Chisq[2], max_p = lrt_s$`Pr(>Chisq)`[2],
+      max_singular = isSingular(m_bin_slope),
+      slope_sd = attr(VarCorr(m_bin_slope)$sub, "stddev")[2],
+      slope_var_chisq = lrt_var$Chisq[2], slope_var_df = lrt_var$Df[2],
+      slope_var_p = lrt_var$`Pr(>Chisq)`[2],
+      stringsAsFactors = FALSE
+    ))
+  }
+  rows
+}
+
+fit_pupil_bin_glmm <- function(df_trial, group_var, lag_var){
+  ctl <- glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))
+  d <- data.frame(sub = factor(df_trial$sub), grp = df_trial[[group_var]],
+                  hit = df_trial$P.T2.T1., bin_c = df_trial$PD_bin - 3,
+                  lag = factor(df_trial[[lag_var]]), run = factor(df_trial$run))
+  d <- d[!is.na(d$hit) & !is.na(d$bin_c),]
+  rows <- NULL
+  for(group_value in unique(d$grp)){
+    x <- d[d$grp == group_value,]
+    for(cv in c("none", "lag_run")){
+      fx <- if(cv == "none") "" else " + lag + run"
+      f <- function(fix, re) suppressMessages(suppressWarnings(
+        glmer(as.formula(paste("hit ~", fix, fx, "+", re)), data = x, family = binomial, control = ctl)))
+      m_null <- f("1", "(1 | sub)")
+      m_bin <- f("bin_c", "(1 | sub)")
+      m_null_slope <- f("1", "(1 + bin_c | sub)")
+      m_bin_slope <- f("bin_c", "(1 + bin_c | sub)")
+      lrt <- anova(m_null, m_bin)
+      lrt_s <- anova(m_null_slope, m_bin_slope)
+      lrt_var <- anova(m_bin, m_bin_slope)
+      rows <- rbind(rows, data.frame(
+        group = group_value, covariates = cv, n_trials = nrow(x),
+        ri_beta = unname(fixef(m_bin)["bin_c"]), ri_chisq = lrt$Chisq[2], ri_p = lrt$`Pr(>Chisq)`[2],
+        max_beta = unname(fixef(m_bin_slope)["bin_c"]), max_chisq = lrt_s$Chisq[2], max_p = lrt_s$`Pr(>Chisq)`[2],
+        max_singular = isSingular(m_bin_slope),
+        slope_sd = unname(attr(VarCorr(m_bin_slope)$sub, "stddev")[2]),
+        slope_var_chisq = lrt_var$Chisq[2], slope_var_df = lrt_var$Df[2],
+        slope_var_p = lrt_var$`Pr(>Chisq)`[2],
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+  rows
+}
+
+fit_pupil_bin_u_maximal <- function(df_accuracy_bin, group_var){
+  ctl <- lmerControl(optimizer = "bobyqa")
+  rows <- NULL
+  for(group_value in unique(df_accuracy_bin[[group_var]])){
+    d <- df_accuracy_bin[df_accuracy_bin[[group_var]] == group_value,]
+    d$b <- d$PD_bin - mean(d$PD_bin)
+    d$b_sq <- d$b^2
+    f <- function(fix) suppressMessages(suppressWarnings(
+      lmer(as.formula(paste("y ~", fix, "+ (1 + b + b_sq | sub)")), data = d, REML = FALSE, control = ctl)))
+    m <- list(null = f("1"), linear = f("b"), u_only = f("b_sq"))
+    aic <- sapply(m, AIC)
+    bic <- sapply(m, BIC)
+    rows <- rbind(rows, data.frame(group = group_value, model = names(m), AIC = aic, BIC = bic,
+                                   singular = sapply(m, isSingular),
+                                   best_AIC = aic == min(aic), best_BIC = bic == min(bic),
+                                   stringsAsFactors = FALSE))
+  }
+  rows
+}
+
+fit_timebin_maximal <- function(x){
+  m <- suppressMessages(suppressWarnings(
+    lmer(y_resid_smooth_norm ~ 0 + bin + (0 + bin | sub), data = x, REML = TRUE,
+         control = lmerControl(optimizer = "bobyqa"))))
+  co <- summary(m)$coefficients
+  data.frame(time_bin = as.integer(sub("bin", "", rownames(co))), est = co[, "Estimate"], se = co[, "Std. Error"],
+             df = co[, "df"], tVal = co[, "t value"], pVal = co[, "Pr(>|t|)"], singular = isSingular(m),
+             stringsAsFactors = FALSE)
+}
+
+fit_lag_maximal <- function(d, lag_var){
+  d$x <- d[[lag_var]]
+  ctl <- lmerControl(optimizer = "bobyqa")
+  f <- function(fix, re) suppressMessages(suppressWarnings(
+    lmer(as.formula(paste("P.T2.T1. ~", fix, "+", re)), data = d, REML = FALSE, control = ctl)))
+  m_bin <- f("x", "(1 | sub)")
+  m_bin_slope <- f("x", "(1 + x | sub)")
+  lrt <- anova(f("1", "(1 | sub)"), m_bin)
+  lrt_s <- anova(f("1", "(1 + x | sub)"), m_bin_slope)
+  lrt_var <- anova(m_bin, m_bin_slope)
+  data.frame(ri_beta = unname(fixef(m_bin)["x"]), ri_chisq = lrt$Chisq[2], ri_p = lrt$`Pr(>Chisq)`[2],
+             max_beta = unname(fixef(m_bin_slope)["x"]), max_chisq = lrt_s$Chisq[2], max_p = lrt_s$`Pr(>Chisq)`[2],
+             max_singular = isSingular(m_bin_slope),
+             slope_var_chisq = lrt_var$Chisq[2], slope_var_df = lrt_var$Df[2], slope_var_p = lrt_var$`Pr(>Chisq)`[2])
+}
+
+p_all = list()
+anovaTable = list()
+
+dat_exp1 <- read.xlsx(paste0(rootFolder,"Exp1/subInfo.xlsx"))
+dat_exp2 <- read.xlsx(paste0(rootFolder,"Exp2/subInfo.xlsx"))
+
+df_sub = data.frame(
+  exp=c(1,2),
+  numOfSub = c(dim(dat_exp1)[1],dim(dat_exp2)[1]),
+  numOfMen = c(length(which(dat_exp1[!is.na(dat_exp1$gender),]$gender == 'M')),
+               length(which(dat_exp2[!is.na(dat_exp2$gender),]$gender == 'M'))),
+  numOfWomen = c(length(which(dat_exp1[!is.na(dat_exp1$gender),]$gender == 'F')),
+                 length(which(dat_exp2[!is.na(dat_exp2$gender),]$gender == 'F')))
+)
+
+```
+
+__Attentional blink__ is a phenomenon of temporal incapable to allocate attention.
+* Within a certain time window, the detection of T2 was impaired.
+* Attentional resource is occupied for T1 processing, resulting a processing deficit for T2 detection.
+__Distractors:__ Twenty-one 30-ms pure tones ranged from 529 to 1330 Hz
+__Target 1(T1):__ Composed of six 5-ms pulses, and its frequency could be any of the 21 frequencies of the distractors
+__Target 2 (T2, Probe):__ A glide that changed smoothly in frequency from 636 to 1006 Hz
+* Each trial contains 20 sequence. 
+* A total of 7 trials segregated with 6-s rest in-between were tested in the one session.
+* Experiment included 57 % of the ‘Both’ sequence and 43 % of T1, T2 sequence.
+__Task:__ Participant reported T1 and T2 sound as soon as possible when they detected them.
+
+## Behavior
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df <- load_json_df(folderName, paste0("df.json"))
+
+```
+
+### T1 response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+config$grCol = c("#E69F00","#738CD9")
+config$label_x=""
+config$label_y="Accuracy(T1)"
+
+session_disp <- c("T1-attend" = "T1-attend", "T1-ignore" = "T1-ignore")
+session_lab  <- session_disp
+session_cols <- function(cols) setNames(cols[1:2], c("T1-attend", "T1-ignore"))
+
+df_accuracy_T1 = df
+df_accuracy_T1 = df_accuracy_T1[(df_accuracy_T1$condition=="T1_only")|(df_accuracy_T1$condition=="Both"),]
+df_accuracy_T1 = df_accuracy_T1[(df_accuracy_T1$session=="T1-attend"),]
+df_accuracy_T1$condition = factor(
+  df_accuracy_T1$condition,
+  levels = c("T1_only", "Both"),
+  labels = c("T1 only", "Both")
+)
+
+df_accuracy_T1 = aggregate(hit_t1 ~ sub*condition*session, data = df_accuracy_T1, FUN = 'mean')
+
+
+config$ylim = round(seq(0.9,1,0.02),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,2,1),2)
+config$xlim_stride = 0.5
+
+
+```
+
+### T2 response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy_T2 = df
+df_accuracy_T2 = df_accuracy_T2[(df_accuracy_T2$condition=="T2_only"),]
+
+df_accuracy_T2 = aggregate(hit_t2 ~ sub*condition*session, data = df_accuracy_T2, FUN = 'mean')
+
+config$label_y="Accuracy(T2)"
+
+config$ylim = round(seq(0.9,1,0.02),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,1,1),2)
+config$xlim_stride = 0.5
+
+
+```
+
+### P(T2|T1) response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy_T1T2 = df
+df_accuracy_T1T2 = df_accuracy_T1T2[df_accuracy_T1T2$condition=="Both",]
+df_accuracy_T1T2$n=1
+
+fit = quickpsy(df_accuracy_T1T2, lag, P.T2.T1., n, 
+               grouping = c("session"), 
+               prob=0.75, 
+               bootstrap = "none"
+)
+
+psy_data = data.frame(
+  session = fit$curves$session,
+  x = fit$curves$x,
+  y = fit$curves$y
+)
+
+df_accuracy_T1T2 = aggregate(P.T2.T1. ~ sub*lag*session, data = df_accuracy_T1T2, FUN = 'mean')
+  
+anovakun(df_accuracy_T1T2,"sAB",long=T, peta=T)
+PT1T2_anova = forDrawingSigANOVA
+PT1T2_anova_post = forDrawingPost
+
+df_accuracy_T1T2$sub = factor(df_accuracy_T1T2$sub ,levels = unique(df_accuracy_T1T2$sub))
+df_accuracy_T1T2$lag = factor(df_accuracy_T1T2$lag,levels = unique(df_accuracy_T1T2$lag))
+df_accuracy_T1T2$session = factor(df_accuracy_T1T2$session,levels = unique(df_accuracy_T1T2$session))
+
+set.seed(bayes_factor_seed)
+bf_table = anovaBF(P.T2.T1. ~ lag*session + sub, data=df_accuracy_T1T2, whichRandom = "sub",progress=FALSE)
+
+config$line=F
+config$label_y="Accuracy(T2|T1)"
+config$label_x="Lag"
+
+config$ylim = round(seq(0,1,0.2),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+
+df_accuracy_T1T2 = df
+df_accuracy_T1T2 = df_accuracy_T1T2[df_accuracy_T1T2$condition=="Both",]
+
+df_accuracy_T1T2 = aggregate(P.T2.T1. ~ sub*lag*session, data = df_accuracy_T1T2, FUN = 'mean')
+
+df_diff = df_accuracy_T1T2[df_accuracy_T1T2$session=="T1-ignore",]
+df_diff$P.T2.T1.=df_diff$P.T2.T1.-df_accuracy_T1T2[df_accuracy_T1T2$session=="T1-attend",]$P.T2.T1.
+
+m <- lmer( P.T2.T1. ~ lag + (1| sub), data = df_diff)
+lag_maximal_exp1 <- fit_lag_maximal(df_diff, "lag")
+
+sm = summary(m)
+coef_df <- extract_coef_info(sm, c("lag"))
+    
+intercept = sm$coefficients["(Intercept)", "Estimate"]
+
+lag_vals <- seq(1, 5, by = 0.1)
+
+ribbon_df = data.frame(
+  lag = lag_vals,
+  y = intercept + sm$coefficients["lag", "Estimate"] * lag_vals,
+  ymin = intercept- sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["lag", "Estimate"] * lag_vals,
+  ymax = intercept + sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["lag", "Estimate"] * lag_vals
+)
+
+config$grCol=NULL
+config$ylim = round(seq(0,0.2,0.05),2)
+config$ylim_stride = 0.01
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+
+mse = function(d, fml){
+  m = aggregate(fml, data = d, FUN = mean)
+  m$se = aggregate(fml, data = d, FUN = sd)[[ncol(m)]] / sqrt(length(unique(d$sub)))
+  m
+}
+col_s = c("T1-ignore" = "#738CD9", "T1-attend" = "#E69F00")
+fig1_theme = theme(axis.text = element_text(size = 26), axis.title = element_text(size = 28),
+                   legend.text = element_text(size = 16), legend.title = element_blank(),
+                   axis.ticks.length = unit(1, "cm"),
+                   plot.tag = element_text(size = 36, face = "bold", family = fontFamily))
+fig1 = list()
+pt_ring = 0.8 / (0.375 * ggplot2::.pt)
+fig3_scale = 1.9
+pt_w = function(size, colour = NULL){
+  if(is.null(colour)) list(geom_point(size = size + pt_ring, colour = "white"), geom_point(size = size))
+  else list(geom_point(size = size + pt_ring, colour = "white"), geom_point(size = size, colour = colour))
+}
+
+## B: accuracy for T1 (T1-attend)
+d = mse(df_accuracy_T1, hit_t1 ~ condition)
+d$x = as.numeric(d$condition)
+config$ylim = round(seq(0.9,1,0.02),2); config$xlim = c(1, 2)
+fig1$B = setEmptyStyle(ggplot(d, aes(x = x, y = hit_t1)) +
+    geom_errorbar(aes(ymin = hit_t1 - se, ymax = hit_t1 + se), width = 0.1, linewidth = 0.3, colour = "black") +
+    pt_w(5, col_s[["T1-attend"]]) +
+    scale_x_continuous(breaks = 1:2, labels = c("T1 only", "T1T2")) +
+    labs(x = NULL, y = "Accuracy for T1", tag = "B"), config) +
+  coord_cartesian(xlim = c(0.5, 2.5), ylim = c(0.89, 1.01), expand = FALSE) +
+  fig1_theme + theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1))
+
+## C: accuracy for T2 (T2-only sequences)
+d = mse(df_accuracy_T2, hit_t2 ~ session)
+d$x = 1 + ifelse(d$session == "T1-attend", -0.08, 0.08)
+fig1$C = setEmptyStyle(ggplot(d, aes(x = x, y = hit_t2, colour = session)) +
+    geom_errorbar(aes(ymin = hit_t2 - se, ymax = hit_t2 + se), width = 0.1, linewidth = 0.3, colour = "black") +
+    pt_w(5) +
+    scale_colour_manual(values = col_s, breaks = names(col_s), labels = session_disp[names(col_s)]) +
+    scale_x_continuous(breaks = 1, labels = "T2 only") +
+    labs(x = NULL, y = "Accuracy for T2", tag = "C"), config) +
+  coord_cartesian(xlim = c(0.5, 1.5), ylim = c(0.89, 1.01), expand = FALSE) +
+  fig1_theme + theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1),
+                     legend.position = c(1, 1), legend.justification = c(1, 1))
+## a single tick: no horizontal x-axis line
+fig1$C$layers = fig1$C$layers[!sapply(fig1$C$layers, function(l)
+  inherits(l$geom, "GeomSegment") && is.data.frame(l$data) && isTRUE(all(l$data$y == l$data$yend)))]
+
+## D (top): T1-ignore minus T1-attend, LMM fit +- SE of the intercept
+d = mse(df_diff, P.T2.T1. ~ lag)
+config$ylim = round(seq(0,0.2,0.05),2); config$xlim = round(seq(1,5,1),2)
+fig1$D_diff = setEmptyStyle(ggplot(d, aes(x = lag, y = P.T2.T1.)) +
+    geom_ribbon(data = ribbon_df, aes(x = lag, ymin = ymin, ymax = ymax), inherit.aes = FALSE,
+                fill = "#E5DDCF", colour = "#C9BEA8", linewidth = 0.3) +
+    geom_line(data = ribbon_df, aes(x = lag, y = y), colour = "#A89870", linewidth = 0.4) +
+    geom_errorbar(aes(ymin = P.T2.T1. - se, ymax = P.T2.T1. + se), width = 0.15, linewidth = 0.3, colour = "black") +
+    pt_w(5, "#A89870") +
+    labs(x = NULL, y = "Diff.", tag = "D"), config) +
+  coord_cartesian(xlim = c(0.5, 5.5), ylim = c(-0.025, 0.225), expand = FALSE) +
+  fig1_theme + theme(axis.text = element_text(size = 16), axis.title = element_text(size = 25),
+                     axis.text.x = element_blank(), axis.ticks.x = element_blank())
+## no x axis in the top panel (it shares Lag with the panel below)
+fig1$D_diff$layers = fig1$D_diff$layers[!sapply(fig1$D_diff$layers, function(l)
+  inherits(l$geom, "GeomSegment") && is.data.frame(l$data) && isTRUE(all(l$data$y == l$data$yend)))]
+
+## D (bottom): accuracy for T2|T1 by lag with the psychometric fits
+d = mse(df_accuracy_T1T2, P.T2.T1. ~ lag*session)
+## T1-attend / T1-ignore slightly offset horizontally so that the points do not overlap
+d$x = as.numeric(as.character(d$lag)) + ifelse(d$session == "T1-attend", -0.08, 0.08)
+config$ylim = round(seq(0,1,0.2),2)
+fig1$D = setEmptyStyle(ggplot(d, aes(x = x, y = P.T2.T1., colour = session)) +
+    geom_line(data = psy_data, aes(x = x, y = y, colour = session), linewidth = 0.4) +
+    geom_errorbar(aes(ymin = P.T2.T1. - se, ymax = P.T2.T1. + se), width = 0.15, linewidth = 0.3, colour = "black") +
+    pt_w(5) +
+    scale_colour_manual(values = col_s, breaks = names(col_s), labels = session_disp[names(col_s)]) +
+    guides(colour = guide_legend(override.aes = list(linetype = 0))) +
+    labs(x = "Lag", y = "Accuracy for T2|T1"), config) +
+  scale_x_continuous(breaks = 1:5) +
+  coord_cartesian(xlim = c(0.5, 5.5), ylim = c(-0.1, 1.1), expand = FALSE) +
+  fig1_theme + theme(legend.position = c(1, 0.02), legend.justification = c(1, 0),
+                     legend.text = element_text(size = 17))
+
+```
+
+## Results
+## Baseline Pupil size
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_pupil <- load_json_df(folderName,  paste0("df_pupil.json"))
+df <- load_json_df(folderName, paste0("df.json"))
+
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+g = c("miss","hit")
+
+df_pupil$data_x = df_pupil$Time
+df_pupil$sdt = g[df_pupil$P.T2.T1.+1]
+
+config$label_x="Time from T2 onset[s]"
+config$label_y="Pupil size[mm]"
+config$linetype=F
+config$grCol=c('#d97168','gray')
+
+
+config$ylim = round(seq(4.8,5.6,0.2),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(-3,3,1),2)
+config$xlim_stride = 0.1
+
+
+```
+
+### pupil hit vs. miss -- Fig 2A re-locked to T1 onset
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_pupil_t1 <- load_json_df(folderName, paste0("df_pupil.json"))
+
+g = c("miss","hit")
+df_pupil_t1$data_x = df_pupil_t1$Time
+df_pupil_t1$sdt = g[df_pupil_t1$P.T2.T1. + 1]
+
+config$label_x = "Time from T1 onset[s]"
+config$label_y = "Pupil size[mm]"
+config$linetype = F
+config$grCol = c('#d97168','gray')
+
+
+config$ylim = round(seq(4.8,5.6,0.2),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(-3,3,1),2)
+config$xlim_stride = 0.1
+
+
+fig2 = list()
+d = aggregate(pupil_t1 ~ sub*session*sdt*Time, data = df_pupil_t1, FUN = mean)
+n_sub = length(unique(d$sub))
+d_m = aggregate(pupil_t1 ~ session*sdt*Time, data = d, FUN = mean)
+d_m$se = aggregate(pupil_t1 ~ session*sdt*Time, data = d, FUN = sd)$pupil_t1 / sqrt(n_sub)
+d_m$sdt = factor(ifelse(d_m$sdt == "hit", "Hit", "Miss"), levels = c("Hit", "Miss"))
+
+fig2$A = ggplot(d_m, aes(x = Time, y = pupil_t1, group = sdt)) +
+  geom_ribbon(aes(ymin = pupil_t1 - se, ymax = pupil_t1 + se), fill = "gray", colour = "gray", alpha = 0.2, linewidth = 0.05) +
+  geom_line(aes(colour = sdt, linetype = sdt), linewidth = 0.6) +
+  geom_vline(xintercept = 0, linewidth = 0.5) +
+  scale_colour_manual(values = c(Hit = "#d97168", Miss = "gray60")) +
+  scale_linetype_manual(values = c(Hit = "solid", Miss = "dashed")) +
+  facet_wrap(. ~ session, labeller = as_labeller(session_lab)) +
+  labs(x = "Time locked by T1 onset", y = "Pupil diameter [mm]", colour = NULL, linetype = NULL)
+
+config$ylim = round(seq(4.6,5.6,0.2),2)
+config$xlim = round(seq(-3,3,1),2)
+fig2$A = setEmptyStyle(fig2$A, config) +
+  scale_x_continuous(breaks = config$xlim) +
+  theme(axis.text = element_text(size = 35), axis.text.x = element_text(size = 28), axis.title = element_text(size = 31),
+        strip.text = element_text(size = 38), legend.text = element_text(size = 25),
+        legend.position = c(1, 1), legend.justification = c(1, 1),
+        legend.background = element_rect(colour = "gray80", fill = "white", linewidth = 0.3),
+        legend.key.width = unit(1.5, "cm"))
+## y-axis line only in the left facet (setEmptyStyle draws it in every facet)
+fig2$A$layers = fig2$A$layers[!sapply(fig2$A$layers, function(l)
+  inherits(l$geom, "GeomSegment") && is.data.frame(l$data) && !("session" %in% names(l$data)) &&
+    isTRUE(all(l$data$x == l$data$xend)))]
+fig2$A = fig2$A + geom_segment(data = data.frame(session = "T1-attend"), aes(x = -3.5, xend = -3.5, y = 4.6, yend = 5.6),
+                               inherit.aes = FALSE, linewidth = 0.5) +
+  coord_cartesian(xlim = c(-3.5, 3.5), ylim = c(4.475, 5.725), expand = FALSE)
+
+hitmiss_panel = function(d_m, y_ticks, x_ticks, xlab, ylab){
+  x_c = range(x_ticks) + c(-0.5, 0.5)
+  pad = diff(range(y_ticks)) * (1/0.8 - 1) / 2
+  config$ylim = y_ticks; config$xlim = x_ticks
+  p = ggplot(d_m, aes(x = Time, y = y, group = sdt)) +
+    geom_ribbon(aes(ymin = y - se, ymax = y + se), fill = "gray", colour = "gray", alpha = 0.2, linewidth = 0.05) +
+    geom_line(aes(colour = sdt, linetype = sdt), linewidth = 0.6) +
+    geom_vline(xintercept = 0, linewidth = 0.5) +
+    scale_colour_manual(values = c(Hit = "#d97168", Miss = "gray60")) +
+    scale_linetype_manual(values = c(Hit = "solid", Miss = "dashed")) +
+    facet_wrap(. ~ session, labeller = as_labeller(session_lab)) +
+    labs(x = xlab, y = ylab, colour = NULL, linetype = NULL)
+  p = setEmptyStyle(p, config) +
+    scale_x_continuous(breaks = x_ticks) +
+    theme(axis.text = element_text(size = 35), axis.text.x = element_text(size = 28), axis.title = element_text(size = 31),
+          strip.text = element_text(size = 38), legend.text = element_text(size = 25),
+          legend.position = c(1, 1), legend.justification = c(1, 1),
+          legend.background = element_rect(colour = "gray80", fill = "white", linewidth = 0.3),
+          legend.key.width = unit(1.5, "cm"))
+  ## y-axis line only in the left facet; x-axis line at the bottom of the panel
+  p$layers = p$layers[!sapply(p$layers, function(l)
+    inherits(l$geom, "GeomSegment") && is.data.frame(l$data) && !("session" %in% names(l$data)) &&
+      isTRUE(all(l$data$x == l$data$xend)))]
+  for(iL in seq_along(p$layers)){
+    l = p$layers[[iL]]
+    if(inherits(l$geom, "GeomSegment") && is.data.frame(l$data) && !is.null(l$data$yend) &&
+       isTRUE(all(l$data$y == l$data$yend))){
+      p$layers[[iL]]$data$y = min(y_ticks) - pad
+      p$layers[[iL]]$data$yend = min(y_ticks) - pad
+    }
+  }
+  p + geom_segment(data = data.frame(session = "T1-attend"), aes(x = x_c[1], xend = x_c[1], y = min(y_ticks), yend = max(y_ticks)),
+                   inherit.aes = FALSE, linewidth = 0.5) +
+    coord_cartesian(xlim = x_c, ylim = c(min(y_ticks) - pad, max(y_ticks) + pad), expand = FALSE)
+}
+hitmiss_mean = function(d){
+  n_sub = length(unique(d$sub))
+  d_m = aggregate(y ~ session*sdt*Time, data = d, FUN = mean)
+  d_m$se = aggregate(y ~ session*sdt*Time, data = d, FUN = sd)$y / sqrt(n_sub)
+  d_m$sdt = factor(ifelse(d_m$sdt == "hit", "Hit", "Miss"), levels = c("Hit", "Miss"))
+  d_m
+}
+sup1 = list()
+
+d = aggregate(pupil ~ sub*session*sdt*Time, data = df_pupil_t1, FUN = mean)
+d$y = d$pupil
+d_m = hitmiss_mean(d)
+## 0.2-mm ticks covering the +-SE bands
+y_ticks = round(seq(floor(min(d_m$y - d_m$se) * 5) / 5, ceiling(max(d_m$y + d_m$se) * 5) / 5, 0.2), 2)
+sup1$A = hitmiss_panel(d_m, y_ticks, round(seq(-3,3,1),2),
+                       "Time locked by T2 onset", "Pupil diameter [mm]")
+
+d = aggregate(pupil_t1 ~ sub*session*sdt*Time, data = df_pupil_t1, FUN = mean)
+bl = aggregate(pupil_t1 ~ sub*session*sdt, data = d[(d$Time >= -0.2) & (d$Time < 0), ], FUN = mean)
+d = merge(d, bl, by = c("sub", "session", "sdt"), suffixes = c("", "_bl"))
+d$y = d$pupil_t1 - d$pupil_t1_bl
+d_m = hitmiss_mean(d)
+## 0.1-mm ticks covering the +-SE bands in the plotted window (-1 to 3 s)
+w = (d_m$Time >= -1) & (d_m$Time <= 3)
+y_ticks = round(seq(floor(min(d_m$y[w] - d_m$se[w]) * 10) / 10,
+                    ceiling(max(d_m$y[w] + d_m$se[w]) * 10) / 10, 0.1), 2)
+sup1$B = hitmiss_panel(d_m, y_ticks, round(seq(-1,3,1),2),
+                       "Time locked by T1 onset", "Pupil change from baseline [mm]")
+
+```
+
+### pupil hit vs. miss
+```{r, message=FALSE, echo=FALSE,warning=FALSE,include=FALSE}
+
+mmName = c('miss','hit')
+
+df_accuracy = df
+df_accuracy = df_accuracy[df_accuracy$condition=="Both",]
+df_accuracy$label = mmName[df_accuracy$P.T2.T1.+1]
+
+df_accuracy["PD"]=df_accuracy["EventPD_t1"]
+df_accuracy = aggregate(PD ~ sub*session*label, data = df_accuracy, FUN = 'mean')
+
+anovakun(df_accuracy,"sAB",long=T, peta=T)
+anova_BP = forDrawingSigANOVA
+
+df_accuracy$sub = factor(df_accuracy$sub,levels = unique(df_accuracy$sub))
+df_accuracy$session = factor(df_accuracy$session ,levels = unique(df_accuracy$session))
+df_accuracy$label = factor(df_accuracy$label,levels = unique(df_accuracy$label))
+
+set.seed(bayes_factor_seed)
+bf_table_BP = anovaBF(PD ~ session*label+sub, data=df_accuracy, whichRandom = "sub",progress=FALSE)
+
+annotation_df=NULL
+ttest_BP=NULL
+xpos=1
+for (iSession in unique(df_accuracy$session)){
+  
+  x_miss = df_accuracy[(df_accuracy$session==iSession)&(df_accuracy$label=="miss"),]$PD
+  x_hit = df_accuracy[(df_accuracy$session==iSession)&(df_accuracy$label=="hit"),]$PD
+  
+  ttest = getTtestSummary(x_miss,x_hit)
+  ttest_BP[[iSession]] = getTtestSummary(x_miss,x_hit)
+  
+  if( ttest$ttest$p.value < 0.05){
+    l = "*"
+  }else if ((ttest$ttest$p.value > 0.05)&(ttest$ttest$p.value < 0.1)){
+    l = "+"
+  }else{ 
+    l = "n.s."
+  }
+  
+  annotation_df = rbind(annotation_df,
+                        data.frame(
+                          session=iSession,
+                          x_position = xpos,
+                          y_position = mean(x_miss)+sd(x_miss)/sqrt(length(unique(df_accuracy$sub))),
+                          label = l,
+                          pVal=ttest$ttest$p.value
+                        ))
+  xpos = xpos+1
+  
+}
+
+config$line=T
+config$label_x = ""
+config$label_y = "Pupil size[mm]"
+config$grCol=rep(c('#d97168','gray'),2)
+
+
+config$ylim = round(seq(4.8,5.4,0.1),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,2,1),2)
+config$xlim_stride = 0.5
+
+
+d_m = aggregate(PD ~ session*label, data = df_accuracy, FUN = mean)
+d_m$se = aggregate(PD ~ session*label, data = df_accuracy, FUN = sd)$PD / sqrt(length(unique(df_accuracy$sub)))
+d_m$label = factor(ifelse(d_m$label == "hit", "Hit", "Miss"), levels = c("Hit", "Miss"))
+d_m$x = as.numeric(factor(d_m$session, levels = c("T1-attend", "T1-ignore"))) + ifelse(d_m$label == "Hit", -0.15, 0.15)
+sig_B = do.call(rbind, lapply(c("T1-attend", "T1-ignore"), function(iSession){
+  data.frame(session = iSession, x = match(iSession, c("T1-attend", "T1-ignore")),
+             y = max(d_m[d_m$session == iSession, "PD"] + d_m[d_m$session == iSession, "se"]) + 0.02,
+             label = annotation_df[annotation_df$session == iSession, "label"])
+}))
+
+fig2$B = ggplot(d_m, aes(x = x, y = PD, colour = label)) +
+  geom_errorbar(aes(ymin = PD - se, ymax = PD + se), width = 0.1, linewidth = 0.3, colour = "black") +
+  pt_w(7) +
+  geom_segment(data = sig_B, aes(x = x - 0.15, xend = x + 0.15, y = y, yend = y), inherit.aes = FALSE, linewidth = 0.3) +
+  geom_text(data = sig_B, aes(x = x, y = y, label = label), inherit.aes = FALSE,
+            size = ifelse(sig_B$label == "*", 9, 5), vjust = -0.3, family = fontFamily) +
+  scale_colour_manual(values = c(Hit = "#d97168", Miss = "gray75")) +
+  scale_x_continuous(breaks = 1:2, labels = session_disp[c("T1-attend", "T1-ignore")]) +
+  labs(x = NULL, y = "Averaged pupil diameter [mm]", colour = NULL)
+
+config$ylim = round(seq(4.6,5.4,0.2),2)
+config$xlim = c(1, 2)
+fig2$B = setEmptyStyle(fig2$B, config) +
+  coord_cartesian(xlim = c(0.5, 2.5), ylim = c(4.5, 5.5), expand = FALSE) +
+  theme(axis.text = element_text(size = 35), axis.title = element_text(size = 32), legend.text = element_text(size = 21),
+        legend.position = c(0.02, 0.02), legend.justification = c(0, 0),
+        axis.text.x = element_text(angle = 25, hjust = 1, vjust = 1, size = 30))
+
+mmName = c('miss','hit')
+
+df_accuracy = df
+df_accuracy = df_accuracy[df_accuracy$condition=="Both",]
+df_accuracy$label = mmName[df_accuracy$P.T2.T1.+1]
+df_accuracy = aggregate(PD ~ sub*session*lag*label, data = df_accuracy, FUN = 'mean')
+config$title=""
+p = dispLineGraph(df_accuracy,config,"PD",c('session',"label","lag"))+
+  facet_wrap(.~lag)
+
+```
+
+### pupil bin
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy = df
+df_accuracy = df_accuracy[df_accuracy$condition=="Both",]
+df_accuracy$PD_bin = df_accuracy$PD_bin+1
+df_accuracy$y = df_accuracy$y_resid
+
+df_accuracy_bin = aggregate(y ~ sub*session*PD_bin, data = df_accuracy, FUN = 'mean')
+pupil_bin_model_comparison_exp1 <- fit_pupil_bin_model_comparison(df_accuracy_bin, "session")
+pupil_bin_maximal_exp1 <- fit_pupil_bin_maximal(df_accuracy_bin, "session")
+pupil_bin_u_maximal_exp1 <- fit_pupil_bin_u_maximal(df_accuracy_bin, "session")
+pupil_bin_glmm_exp1 <- fit_pupil_bin_glmm(df_accuracy, "session", "lag")
+
+modelList = c(
+  "y ~ PD_bin + (1| sub)"
+)
+
+estimateAll = NULL
+ribbon_df = NULL
+for(iSession in unique(df_accuracy$session)){
+  for( m in modelList){
+    
+    df_model = df_accuracy_bin[df_accuracy_bin$session==iSession,]
+    m_null <- lmer(y ~ 1 + (1| sub), data = df_model, REML = FALSE)
+    m <- lmer(y ~ PD_bin + (1| sub), data = df_model, REML = FALSE)
+    lrt <- anova(m_null, m)
+    sm = summary(m)
+    terms <- c("PD")
+    coef_df <- extract_coef_info(sm, c("PD_bin"))
+    
+    intercept = sm$coefficients["(Intercept)", "Estimate"]
+    coef_df$formula = c(sm$call$formula)
+    coef_df$session = iSession
+    coef_df$pVal = lrt$`Pr(>Chisq)`[2]
+    coef_df$chisq = lrt$Chisq[2]
+    coef_df$chisq_df = 1
+    coef_df$intercept = intercept
+    coef_df$slope = sm$coefficients["PD_bin", "Estimate"]
+    coef_df$intercept_min = intercept - sm$coefficients["(Intercept)", "Std. Error"]
+    coef_df$intercept_max = intercept + sm$coefficients["(Intercept)", "Std. Error"]
+    coef_df$x_position = 1.5
+    coef_df$y_position = mean(df_accuracy[(df_accuracy$session==iSession)&
+                                            (df_accuracy$PD_bin==1),]$y)+0.03
+    
+    if (coef_df$pVal<0.001){
+      coef_df$pLabel = 'p<0.001'
+    }
+    else{
+      coef_df$pLabel = paste0('p=',round(coef_df$pVal,4))      
+    }
+    
+    estimateAll = rbind(estimateAll,coef_df)
+    
+    pupil_vals <- seq(1, 5, by = 0.1)
+    ribbon_df = rbind(ribbon_df,
+                      data.frame(
+                        session = iSession,
+                        pupil_bin = pupil_vals,
+                        y = intercept + sm$coefficients["PD_bin", "Estimate"] * pupil_vals,
+                        ymin = intercept- sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["PD_bin", "Estimate"] * pupil_vals,
+                        ymax = intercept + sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["PD_bin", "Estimate"] * pupil_vals
+                      ))
+    
+  }
+}
+
+df_accuracy = df_accuracy_bin
+
+config$label_x="Pupil bin"
+config$label_y="Accuracy"
+config$grCol = c("#E69F00","#738CD9")
+
+config$linetype=F
+
+config$ylim = round(seq(0.45,0.7,0.05),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+
+d_m = aggregate(y ~ session*PD_bin, data = df_accuracy, FUN = mean)
+d_m$se = aggregate(y ~ session*PD_bin, data = df_accuracy, FUN = sd)$y / sqrt(length(unique(df_accuracy$sub)))
+col_C = c("T1-ignore" = "#738CD9", "T1-attend" = "#E69F00")
+fill_C = c("T1-ignore" = "#7FD8D8", "T1-attend" = "#FFB3B3")
+p_C = estimateAll[, c("session", "intercept", "slope", "pLabel")]
+p_C$x = 4.4
+p_C$y = p_C$intercept - (ribbon_df$y - ribbon_df$ymin)[1] + p_C$slope * 4.4 - 0.012
+
+fig2$C = ggplot(d_m, aes(x = PD_bin, y = y, colour = session)) +
+  geom_ribbon(data = ribbon_df, aes(x = pupil_bin, ymin = ymin, ymax = ymax, fill = session), inherit.aes = FALSE, alpha = 0.4) +
+  geom_line(data = ribbon_df, aes(x = pupil_bin, y = ymin, colour = session), linewidth = 0.4) +
+  geom_line(data = ribbon_df, aes(x = pupil_bin, y = ymax, colour = session), linewidth = 0.4) +
+  geom_line(data = ribbon_df, aes(x = pupil_bin, y = y, colour = session), linewidth = 0.4) +
+  geom_errorbar(aes(ymin = y - se, ymax = y + se), width = 0.15, linewidth = 0.3, colour = "black") +
+  pt_w(7) +
+  geom_text(data = p_C, aes(x = x, y = y, label = pLabel, colour = session), inherit.aes = FALSE,
+            size = 4.5, vjust = 1) +
+  scale_colour_manual(values = col_C, breaks = c("T1-ignore", "T1-attend"), labels = session_disp) +
+  scale_fill_manual(values = fill_C, guide = "none") +
+  guides(colour = guide_legend(override.aes = list(linetype = 0, linewidth = 0, size = 5))) +
+  labs(x = "Pupil bin", y = "Accuracy for T2|T1", colour = NULL)
+
+config$ylim = round(seq(0.45,0.7,0.05),2)
+config$xlim = round(seq(1,5,1),2)
+fig2$C = setEmptyStyle(fig2$C, config) +
+  theme(axis.text = element_text(size = 30), axis.title = element_text(size = 31), legend.text = element_text(size = 18),
+        legend.position = c(0.02, 0.05), legend.justification = c(0, 0))
+pad_C = diff(range(config$ylim)) * (1/0.8 - 1) / 2
+fig2$C = fig2$C + coord_cartesian(xlim = c(0.5, 5.5), ylim = c(0.45 - pad_C, 0.70 + pad_C), expand = FALSE)
+for(iL in seq_along(fig2$C$layers)){
+  l = fig2$C$layers[[iL]]
+  if(inherits(l$geom, "GeomSegment") && is.data.frame(l$data) && isTRUE(all(l$data$y == l$data$yend))){
+    fig2$C$layers[[iL]]$data$y = 0.45 - pad_C
+    fig2$C$layers[[iL]]$data$yend = 0.45 - pad_C
+  }
+}
+
+```
+
+### pupil size at each bin
+
+## Accuracy
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df <- load_json_df(folderName, paste0("df.json"))
+
+```
+
+## Pupil wave
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df=NULL
+df$troughs <- load_json_df(folderName, paste0("df_bin_troughs.json"))
+df$peaks <- load_json_df(folderName, paste0("df_bin_peaks.json"))
+## trial-level y_resid_smooth_norm (one row per trial) for the per-bin LMM
+df_trial = NULL
+df_trial$troughs <- load_json_df(folderName, paste0("df_trial_troughs.json"))
+df_trial$peaks <- load_json_df(folderName, paste0("df_trial_peaks.json"))
+df_pupilTimeCourse <- as.data.frame(arrow::read_parquet(paste0(folderName, "/df_pupilTimeCourse.parquet")))
+df_pupilTimeCourse$Session <- recode_session(df_pupilTimeCourse$Session)
+  
+g = NULL
+for(iTime in sort(unique(df[["troughs"]]$time_bin))){
+  if (iTime >=0){
+    g = rbind(g,paste0(iTime,'-',iTime+1,'s'))
+  }
+}
+
+eTime = 6
+
+```
+
+### Averaged accuracy diff
+```{r, message=FALSE, echo=FALSE,warning=FALSE,include=FALSE}
+
+annotation_df_wave=NULL
+timebin_maximal=NULL   # maximal time-bin model, Supplementary Material
+acc_sub_wave=NULL   # subject x bin x session means, for the PD vs PC effect size below
+
+# single-trial data for the GLMM below (df_bin_*.json hold subject x lag x bin means)
+
+xlims=NULL
+xlims$troughs$ylim=round(seq(0,0.4,0.1),2)
+xlims$troughs$ylim_stride=0.01
+xlims$peaks$ylim=round(seq(-0.4,0,0.1),2)
+xlims$peaks$ylim_stride=0.01
+
+for(phaseType in c('peaks','troughs')){
+  
+  annotation_df_wave[[phaseType]]=NULL
+  df[[phaseType]]$time_bin = -1
+  time=df[[phaseType]][[paste0("wave_onset_",phaseType,"_st")]]
+
+  for(iTime in 0:(eTime-1)){
+    df[[phaseType]][(time>=iTime)&(time<iTime+1),]["time_bin"]=iTime
+  }
+  
+  df_accuracy = df[[phaseType]]
+  df_accuracy = df_accuracy[df_accuracy$time_bin >= 0,]
+  df_accuracy = df_accuracy[df_accuracy$time_bin < eTime,]
+  df_accuracy$y = df_accuracy$y_resid_smooth_norm
+  df_accuracy = aggregate(y ~ sub*time_bin*session, data = df_accuracy, FUN = 'mean')
+  acc_sub_wave[[phaseType]] = df_accuracy
+  
+  df_lmm = df_trial[[phaseType]]
+  df_lmm = df_lmm[(df_lmm$time_bin >= 0)&(df_lmm$time_bin < eTime),]
+  df_lmm$bin = factor(df_lmm$time_bin)
+  df_lmm$sub = factor(df_lmm$sub)
+
+  for (iSession in unique(df_accuracy$session)){
+
+    tm = fit_timebin_maximal(df_lmm[df_lmm$session==iSession,])
+    tm$phaseType = phaseType
+    tm$session = iSession
+    tm$p_fdr = p.adjust(tm$pVal, method = "BH")
+    timebin_maximal = rbind(timebin_maximal, tm)
+
+    for (iTime in sort(unique(df_accuracy$time_bin))){
+
+      x_bin = df_accuracy[(df_accuracy$time_bin==iTime)&(df_accuracy$session==iSession),]$y
+      xb = df_lmm[(df_lmm$session==iSession)&(df_lmm$time_bin==iTime),]
+      mb = suppressMessages(lmer(y_resid_smooth_norm ~ 1 + (1|sub), data = xb, REML = TRUE))
+      cf = summary(mb, ddf = "Kenward-Roger")$coefficients["(Intercept)",]
+
+      if(round(cf[["Pr(>|t|)"]],3)==0){
+        pLines = "$p$ < 0.001"
+      }else{
+        pLines = paste0("$p$ = ",round(cf[["Pr(>|t|)"]],3))
+      }
+
+      annotation_df_wave[[phaseType]] = rbind(annotation_df_wave[[phaseType]],
+                            data.frame(
+                              phaseType=phaseType,
+                              time_bin = iTime+1,
+                              session = iSession,
+                              x_position = iTime+1,
+                              ## above positive points, below negative ones (stays inside the panel)
+                              y_position = mean(x_bin) + ifelse(mean(x_bin) >= 0, 0.02, -0.025),
+                              label = "",
+                              est=cf[["Estimate"]],
+                              se=cf[["Std. Error"]],
+                              df=cf[["df"]],
+                              tVal=cf[["t value"]],
+                              pVal=cf[["Pr(>|t|)"]],
+                              descrip=paste0("$b$ = ", round(cf[["Estimate"]],3),
+                                             ", $SE$ = ", round(cf[["Std. Error"]],3),
+                                             ", $t$(", round(cf[["df"]],1), ") = ", round(cf[["t value"]],3),
+                                             ", ", pLines)
+                            ))
+
+    }
+  }
+
+  # --- Multiple-comparisons correction: Benjamini-Hochberg
+  annotation_df_wave[[phaseType]]$p_fdr = NA
+  for (iSession in unique(annotation_df_wave[[phaseType]]$session)){
+    idx = annotation_df_wave[[phaseType]]$session==iSession
+    annotation_df_wave[[phaseType]]$p_fdr[idx] = p.adjust(annotation_df_wave[[phaseType]]$pVal[idx], method="BH")
+  }
+
+  annotation_df_wave[[phaseType]]$label = ifelse(
+    annotation_df_wave[[phaseType]]$p_fdr < 0.05, "*",
+    ifelse(annotation_df_wave[[phaseType]]$p_fdr < 0.1, "+", "")
+  )
+
+  config$grCol = c("#E69F00","#738CD9")
+  
+  config$line = T
+  config$title = ""
+  config$label_x = "Time bins from pupil constriction"
+  config$label_y = "Accuracy diff. from mean"
+  
+  df_accuracy$time_bin = g[df_accuracy$time_bin+1]
+  df_accuracy$time_bin = factor(df_accuracy$time_bin,levels = g)
+  
+  p = dispLineGraph(df_accuracy,config,"y",c('time_bin','session'))+
+    geom_hline(yintercept = 0, linetype = "solid", color = "black") +
+    scale_color_manual(values = session_cols(config$grCol), labels = session_disp,
+                       breaks = c("T1-ignore", "T1-attend"), name = NULL)+
+    geom_text(data = annotation_df_wave[[phaseType]], size=16, vjust = 0.5, family = fontFamily,
+              aes(x = x_position, y = y_position, label = label,color=session), inherit.aes = FALSE)+
+    theme(
+      legend.position = c(1, 1),
+      legend.justification = c(1, 1),
+      axis.text.x = element_text(angle = 30, hjust = 0.8)
+    )
+  
+  config$ylim = round(seq(-0.10,0.10,0.05),2)
+  config$ylim_stride = 0.01
+  config$xlim = round(seq(1,eTime,1),2)
+  config$xlim_stride = 0.5
+  
+  p = setEmptyStyle(p,config,size_font=60)
+  ## do not clip the significance marks above the top bin (e.g. 1-2 s, T1-attend)
+  p$coordinates$clip = "off"
+  is_eb  = sapply(p$layers, function(l) inherits(l$geom, c("GeomErrorbar", "GeomLinerange")))
+  is_pt  = sapply(p$layers, function(l) inherits(l$geom, "GeomPoint"))
+  is_txt = sapply(p$layers, function(l) inherits(l$geom, "GeomText"))
+  p$layers = c(p$layers[is_eb], p$layers[!(is_eb | is_pt | is_txt)], p$layers[is_pt], p$layers[is_txt])
+  for(l in p$layers[sapply(p$layers, function(l) inherits(l$geom, "GeomPoint"))]){
+    l$aes_params$shape = 21
+    l$aes_params$colour = "white"
+    l$aes_params$stroke = 0.8 * ifelse(phaseType == "troughs", fig3_scale, 1) / 1.4226
+  }
+  p$mapping$fill = p$mapping$colour
+  p = p + scale_fill_manual(values = session_cols(config$grCol), labels = session_disp,
+                            breaks = c("T1-ignore", "T1-attend"), name = NULL)
+  p$size = c(8,6)
+
+  p_all[[paste0("wave_",phaseType)]] = p
+  
+  df_pupilTimeCourse$data_x = df_pupilTimeCourse$Time
+  
+  config$label_x="Time from pupil constriction[s]"
+  config$label_y="Pupil size change[%]"
+  config$linetype=F
+  p = disp(df_pupilTimeCourse, config, paste0("pupil_",phaseType), T, c("Session"))+
+    theme(
+      legend.position = c(0,1),
+      legend.justification = c(0,1)
+    )
+  
+  config$ylim = xlims[[phaseType]]$ylim
+  config$ylim_stride = 0.01
+  config$xlim = round(seq(0,6,1),2)
+  config$xlim_stride = 0.5
+  
+  p = setEmptyStyle(p,config,size_font=60)+
+    scale_x_continuous(breaks = config$xlim)
+  
+  p$size=c(8,5)
+  
+  p_all[[paste0("pupil_",phaseType)]] = p
+  
+}
+
+
+```
+
+
+### Heatmap
+```{r, message=FALSE, echo=FALSE,warning=FALSE}
+
+for(phaseType in c('peaks','troughs')){
+
+  df[[phaseType]]$time_bin = -1
+  time=df[[phaseType]][[paste0("wave_onset_",phaseType,"_st")]]
+  for(iTime in 0:(eTime-1)){
+    df[[phaseType]]$time_bin[which((time>=iTime)&(time<iTime+1))] = iTime
+  }
+
+  df_accuracy = df[[phaseType]]
+  df_accuracy = df_accuracy[df_accuracy$time_bin >= 0,]
+  df_accuracy = df_accuracy[df_accuracy$time_bin < eTime,]
+
+  df_accuracy$y = df_accuracy$y_resid_smooth_norm
+  
+  df_accuracy = aggregate(y ~ time_bin*lag*session, data = df_accuracy, FUN = 'mean')
+  df_accuracy$time_bin = g[df_accuracy$time_bin+1]
+  df_accuracy$time_bin = factor(df_accuracy$time_bin,levels = g)
+  
+  for(iSession in unique(df_accuracy$session)){
+    
+    p = ggplot(df_accuracy[df_accuracy$session==iSession,], 
+               aes(x = time_bin, y = lag,fill=y)) +
+      geom_tile(color = "white") +
+      scale_fill_distiller(palette = "RdBu", direction = -1)+
+      scale_fill_gradient2(
+        low = "#2C3E94",
+        mid = "white",
+        high = "#B22222",
+        midpoint = 0,
+        name = "Accuracy diff. from mean",
+        limits = c(-0.3, 0.3)
+      )+
+      theme_minimal()+
+      xlab("Time bins")+ylab("Lag")+
+      guides(fill = guide_colorbar(
+        barwidth = 1,
+        barheight = 20,
+        title.position = "right",
+        title.theme = element_text(angle = -90)
+      ))+
+      theme(
+        axis.text.x = element_text(angle = 30, hjust = 0.8)
+      )
+    config$ylim = round(seq(1,5,1),2)
+    config$ylim_stride = 0.1
+    config$xlim = round(seq(0,eTime,1),2)
+    config$xlim_stride = 0.1
+    iSession_disp = unname(session_lab[iSession])
+    config$title = iSession_disp
+
+    p = setEmptyStyle(p,config,size_font=60)+
+      coord_fixed()+
+      ggtitle(iSession_disp)
+    ## no frame around the tiles: drop the panel border and the axis segments of setEmptyStyle
+    p = p + theme(panel.background = element_blank())
+    p$layers = p$layers[!sapply(p$layers, function(l) inherits(l$geom, "GeomSegment"))]
+    
+    p$size=c(8,6)
+    p_all[[paste0("heatmap_wave_",phaseType,'_',gsub("-", "_", iSession))]]=p
+    
+  }
+}
+
+```
+
+### Example pupil trace (Figure 3A)
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_example_trace <- load_json_df(folderName, "df_example_trace.json")
+df_example_events <- load_json_df(folderName, "df_example_events.json")
+
+example_win <- c(300, 400)
+tr_win <- df_example_trace[(df_example_trace$time >= example_win[1]) & (df_example_trace$time <= example_win[2]), ]
+ev_win <- df_example_events[(df_example_events$time >= example_win[1]) & (df_example_events$time <= example_win[2]), ]
+y_lo <- floor(min(tr_win$pupil, na.rm = TRUE) * 2) / 2
+y_hi <- ceiling(max(tr_win$pupil, na.rm = TRUE) * 2) / 2
+
+example_lab <- c("T1 onset", "Raw pupil data", "Lowpass-filtered", "Pupil constriction")
+example_col <- setNames(c("black", "#b2e0d2", "#4c72b0", "#4c72b0"), example_lab)
+
+p_all$example_trace = ggplot(tr_win, aes(x = time)) +
+  geom_line(aes(y = pupil, colour = "Raw pupil data"), linewidth = 1) +
+  geom_line(aes(y = pupil_lp, colour = "Lowpass-filtered"), linewidth = 1.5) +
+  geom_segment(data = ev_win[ev_win$event == "sequence", ],
+               aes(x = time, xend = time, y = y_lo, yend = pupil_lp, colour = "T1 onset"),
+               linetype = "dotdash", linewidth = 0.5) +
+  geom_point(data = ev_win[ev_win$event == "trough", ], aes(x = time, y = pupil_lp),
+             colour = "white", size = 12 + pt_ring * fig3_scale, show.legend = FALSE) +
+  geom_point(data = ev_win[ev_win$event == "trough", ], aes(x = time, y = pupil_lp, colour = "Pupil constriction"),
+             size = 12) +
+  scale_colour_manual(name = NULL, breaks = example_lab, values = example_col) +
+  guides(colour = guide_legend(override.aes = list(
+    linetype = c("dotdash", "solid", "solid", "blank"),
+    linewidth = c(0.8, 1.5, 1.5, 0),
+    shape = c(NA, NA, NA, 16),
+    size = c(NA, NA, NA, 8)))) +
+  xlab("Time[s]") + ylab("Pupil diameter [mm]")
+
+config$ylim = seq(y_lo, y_hi, 0.5)
+config$ylim_stride = 0.05
+config$xlim = seq(example_win[1], example_win[2], 20)
+config$xlim_stride = 2
+
+p_all$example_trace = setEmptyStyle(p_all$example_trace, config, size_font=60) +
+  scale_x_continuous(breaks = config$xlim) +
+  theme(legend.position = c(1, 1), legend.justification = c(1, 1),
+        legend.key.width = unit(3, "cm"))
+p_all$example_trace$size = c(12, 6)
+
+```
+
+## Combine figs
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+mm_pt = function(x) x * ggplot2::.pt
+std_axis = theme(axis.ticks.length = unit(15, "mm"), axis.ticks.length.x = unit(15, "mm"), axis.ticks.length.y = unit(15, "mm"),
+                 axis.text = element_text(size = mm_pt(10)), axis.text.x = element_text(size = mm_pt(10)),
+                 axis.text.y = element_text(size = mm_pt(10)),
+                 axis.title = element_text(size = mm_pt(12)), axis.title.x = element_text(size = mm_pt(12)),
+                 axis.title.y = element_text(size = mm_pt(12)))
+
+p_all$Figure1 = patchwork::wrap_plots(fig1$B, fig1$C,
+                                      ## wrapped: D's "Lag" is not pushed down to B/C's rotated labels
+                                      patchwork::wrap_elements(full = patchwork::wrap_plots(fig1$D_diff, fig1$D + std_axis, ncol = 1, heights = c(1, 2.3)) &
+                                                                 theme(plot.margin = margin(5, 10, 5, 5, "pt"))),
+                                      nrow = 1, widths = c(0.24, 0.2, 0.56)) &
+  theme(plot.margin = margin(5, 10, 5, 5, "pt")) & std_axis
+p_all$Figure1$size_mm = c(353, 155)
+
+p_all$Figure2 = patchwork::wrap_plots(fig2$A, fig2$B, fig2$C, nrow = 1, widths = c(0.46, 0.21, 0.31)) +
+  patchwork::plot_annotation(tag_levels = "A") &
+  theme(plot.tag = element_text(size = 49, face = "bold", family = fontFamily),
+        plot.margin = margin(10, 15, 5, 5, "pt")) & std_axis
+## aspect ratio of the published Fig. 2 ([]JNS/R1/figure/old/Fig2.pdf, 1567 x 591 pt)
+p_all$Figure2$size_mm = c(figsize_w, figsize_w*591.033/1567)
+
+clone_proto = function(x){ y = rlang::env_clone(x); class(y) = class(x); y }
+scale_gg = function(p, f){
+  ## layers: copies, so that the plots in p_all are not changed
+  p$layers = lapply(p$layers, function(l){
+    layer_new = clone_proto(l)
+    ap = l$aes_params
+    ## only sizes set explicitly in the layer (geom defaults, e.g. 0.5-mm lines, are kept)
+    for(a in c("size", "linewidth", "stroke")){
+      if(is.numeric(ap[[a]])) ap[[a]] = ap[[a]] * f
+    }
+    layer_new$aes_params = ap
+    layer_new
+  })
+  ## theme elements
+  th = p$theme
+  for(nm in names(th)){
+    e = th[[nm]]
+    if(inherits(e, "element_text")){
+      if(is.numeric(e$size) && !inherits(e$size, "rel")) e$size = e$size * f
+      if(inherits(e$margin, "unit")) e$margin = e$margin * f
+    } else if(inherits(e, c("element_line", "element_rect"))){
+      if(is.numeric(e$linewidth) && !inherits(e$linewidth, "rel")) e$linewidth = e$linewidth * f
+    } else if(inherits(e, "unit")){
+      e = e * f
+    }
+    th[nm] = list(e)
+  }
+  p$theme = th
+  ## sizes in legend override.aes
+  if(!is.null(p$guides$guides) && length(p$guides$guides) > 0){
+    gd = clone_proto(p$guides)
+    gd$guides = lapply(p$guides$guides, function(g){
+      if(!inherits(g, "Guide") || is.null(g$params$override.aes)) return(g)
+      guide_new = clone_proto(g)
+      pr = g$params
+      for(a in c("size", "linewidth", "stroke")) if(is.numeric(pr$override.aes[[a]])) pr$override.aes[[a]] = pr$override.aes[[a]] * f
+      guide_new$params = pr
+      guide_new
+    })
+    p$guides = gd
+  }
+  p
+}
+fig3_k = 1 / fig3_scale
+
+fig3_inset = p_all$pupil_troughs +
+  scale_y_continuous(breaks = c(0, 0.2, 0.4)) +
+  labs(x = "Time from pupil constriction[s]", y = "Pupil change [mm]", colour = NULL, fill = NULL) +
+  guides(colour = guide_legend(reverse = TRUE), fill = guide_legend(reverse = TRUE)) +
+  theme(text = element_text(size = 32), axis.text = element_text(size = 51), axis.title.x = element_text(size = 48), legend.text = element_text(size = 27), legend.title = element_blank(),
+        legend.position = c(1, 0), legend.justification = c(1, 0),
+        axis.ticks.length = unit(0.6, "cm"))
+## top margin keeps the panel letters A-C clear of the plots
+fig3_margin = theme(plot.margin = margin(105, 10, 10, 10, "pt"))
+## text sizes relative to the figure width
+fig3_wave = p_all$wave_troughs + theme(legend.text = element_text(size = 33))
+## shorter ticks so the heatmaps fill more of column C
+fig3_hm = theme(axis.ticks.length = unit(0.8, "cm"), text = element_text(size = 60, family = fontFamily),
+                axis.title = element_text(size = 62), axis.text = element_text(size = 51),
+                legend.text = element_text(size = 44), plot.title = element_text(size = 59, hjust = -0.2))
+fig3_bar = guides(fill = guide_colorbar(barwidth = 3 * fig3_k, barheight = 40 * fig3_k, title.position = "right",
+                                        title.theme = element_text(angle = -90, size = 38 * fig3_k, family = fontFamily)))
+fig3_margin_s = theme(plot.margin = margin(105, 10, 10, 10, "pt") * fig3_k)
+fig3_b = ggarrange(scale_gg(fig3_inset, fig3_k), scale_gg(fig3_wave, fig3_k) + std_axis, nrow = 2, heights = c(1.9, 3), align = "v") + theme(plot.margin = margin(35, 10, 10, 10, "pt") * fig3_k)
+fig3_c = ggarrange(scale_gg(p_all$heatmap_wave_troughs_T1_ignore + fig3_hm + theme(axis.title.x = element_text(colour = NA)), fig3_k) + fig3_bar,
+                   scale_gg(p_all$heatmap_wave_troughs_T1_attend + fig3_hm, fig3_k) + fig3_bar,
+                   nrow = 2, common.legend = TRUE, legend = "right") + fig3_margin_s
+## NULL columns = blank space between the panels
+p_all$Figure3 = ggarrange(scale_gg(p_all$example_trace + fig3_margin, fig3_k) + std_axis, NULL, fig3_b, NULL, fig3_c, ncol = 5,
+                          widths = c(1.25, 0.1, 0.85, 0.1, 0.7),
+                          labels = c("A", "", "B", "", "C"),
+                          font.label = list(size = 87 * fig3_k, face = "bold", family = fontFamily))
+## size of the published Fig. 3 ([]JNS/R1/figure/old/Fig3.pdf, 1567.9 x 573.339 pt)
+p_all$Figure3$size_mm = c(figsize_w, figsize_w*573.339/1567.9)
+
+sup1_inset = p_all$pupil_peaks +
+  scale_y_continuous(breaks = c(0, -0.2, -0.4)) +
+  labs(x = "Time from pupil constriction[s]", y = "Pupil change [mm]", colour = NULL, fill = NULL) +
+  guides(colour = guide_legend(reverse = TRUE), fill = guide_legend(reverse = TRUE)) +
+  theme(text = element_text(size = 32), axis.text = element_text(size = 51), axis.title.x = element_text(size = 48), legend.text = element_text(size = 27), legend.title = element_blank(),
+        legend.position = c(1, 1), legend.justification = c(1, 1),
+        axis.ticks.length = unit(0.6, "cm"))
+sup1_a = ggarrange(scale_gg(sup1_inset, fig3_k),
+                   scale_gg(p_all$wave_peaks + theme(legend.text = element_text(size = 33),
+                                                     legend.position = c(0.02, 1), legend.justification = c(0, 1)), fig3_k) + std_axis,
+                   nrow = 2, heights = c(1.9, 3), align = "v") + theme(plot.margin = margin(35, 10, 10, 10, "pt") * fig3_k)
+sup1_b = ggarrange(scale_gg(p_all$heatmap_wave_peaks_T1_ignore + fig3_hm + theme(axis.title.x = element_text(colour = NA)), fig3_k) + fig3_bar,
+                   scale_gg(p_all$heatmap_wave_peaks_T1_attend + fig3_hm, fig3_k) + fig3_bar,
+                   nrow = 2, common.legend = TRUE, legend = "right") + fig3_margin_s
+p_all$SupFigure2 = ggarrange(sup1_a, NULL, sup1_b, ncol = 3, widths = c(0.85, 0.1, 0.7),
+                             labels = c("A", "", "B"),
+                             font.label = list(size = 87 * fig3_k, face = "bold", family = fontFamily))
+p_all$SupFigure2$size_mm = c(figsize_w*1.65/3, figsize_w*573.339/1567.9)
+
+```
+
+# Experiment 2
+```{r, message=FALSE, echo=FALSE,warning=FALSE,include=FALSE}
+
+expFolder = paste0(rootFolder,"Exp2/data")
+
+folderName = list.files(expFolder, full.names=T)
+folderName = folderName[length(folderName)]
+
+saveFolder = paste0("figure/",format(Sys.time(), '%Y%m%d'),"/")
+
+
+saveFig = T
+
+if(!dir.exists(saveFolder)){
+  dir.create(saveFolder, recursive = TRUE)
+}
+
+
+config <- list(lim_x = c(0,1),
+               lim_y = c(2,4),
+               alpha = 0.1,
+               stride = 0.1,
+               label_x = "Time [sec]",
+               label_y = "Pupil size[a.u.]",
+               title = "",
+               linetype = T,
+               shape=F,
+               grCol = c('Black','gray')
+               
+)
+
+```
+
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df <- load_json_dataframe(folderName, "df.json")
+df_pse_thre <- load_json_df(folderName, "df_pse_thre.json")
+
+phase_disp <- c("PC phase", "PD phase")
+
+```
+
+### T1 response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+config$grCol = c("#4c72b0","#c44e52")
+config$label_x=""
+config$label_y="Accuracy(T1)"
+
+df_accuracy_T1_exp2 = df
+df_accuracy_T1_exp2 = df_accuracy_T1_exp2[(df_accuracy_T1_exp2$condition=="T1_only")|(df_accuracy_T1_exp2$condition=="Both"),]
+
+df_accuracy_T1_exp2 = aggregate(hit_t1 ~ sub*condition*analysis, data = df_accuracy_T1_exp2, FUN = 'mean')
+
+
+config$ylim = round(seq(0.86,1,0.02),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,2,1),2)
+config$xlim_stride = 0.5
+
+
+stat_t1_exp2=NULL
+x_pc = df_accuracy_T1_exp2[(df_accuracy_T1_exp2$condition=="T1_only")&(df_accuracy_T1_exp2$analysis=="LBP"),]$hit_t1
+x_pd = df_accuracy_T1_exp2[(df_accuracy_T1_exp2$condition=="T1_only")&(df_accuracy_T1_exp2$analysis=="SBP"),]$hit_t1
+
+stat_t1_exp2$T1_only = getTtestSummary(x_pc,x_pd)
+
+x_pc = df_accuracy_T1_exp2[(df_accuracy_T1_exp2$condition=="Both")&(df_accuracy_T1_exp2$analysis=="LBP"),]$hit_t1
+x_pd = df_accuracy_T1_exp2[(df_accuracy_T1_exp2$condition=="Both")&(df_accuracy_T1_exp2$analysis=="SBP"),]$hit_t1
+
+stat_t1_exp2$Both = getTtestSummary(x_pc,x_pd)
+
+```
+
+### T2 response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy_T2_exp2 = df
+df_accuracy_T2_exp2 = df_accuracy_T2_exp2[(df_accuracy_T2_exp2$condition=="T2_only")|(df_accuracy_T2_exp2$condition=="Both"),]
+
+df_accuracy_T2_exp2 = aggregate(hit_t2 ~ sub*condition*analysis, data = df_accuracy_T2_exp2, FUN = 'mean')
+
+config$label_y="Accuracy(T2)"
+
+config$ylim = round(seq(0.5,1,0.1),2)
+config$ylim_stride = 0.01
+config$xlim = round(seq(1,2,1),2)
+config$xlim_stride = 0.5
+
+
+stat_t2_exp2=NULL
+x_pc = df_accuracy_T2_exp2[(df_accuracy_T2_exp2$condition=="T2_only")&(df_accuracy_T2_exp2$analysis=="LBP"),]$hit_t2
+x_pd = df_accuracy_T2_exp2[(df_accuracy_T2_exp2$condition=="T2_only")&(df_accuracy_T2_exp2$analysis=="SBP"),]$hit_t2
+
+stat_t2_exp2$T2_only = getTtestSummary(x_pc,x_pd)
+
+x_pc = df_accuracy_T2_exp2[(df_accuracy_T2_exp2$condition=="Both")&(df_accuracy_T2_exp2$analysis=="LBP"),]$hit_t2
+x_pd = df_accuracy_T2_exp2[(df_accuracy_T2_exp2$condition=="Both")&(df_accuracy_T2_exp2$analysis=="SBP"),]$hit_t2
+
+stat_t2_exp2$Both = getTtestSummary(x_pc,x_pd)
+
+```
+
+### P(T2|T1) response
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy_T1T2_exp2 = df
+df_accuracy_T1T2_exp2 = df_accuracy_T1T2_exp2[df_accuracy_T1T2_exp2$condition=="Both",]
+
+df_accuracy_T1T2_exp2$n=1
+
+fit = quickpsy(df_accuracy_T1T2_exp2, lag_cond, P.T2.T1., n, 
+               grouping = c("analysis"), 
+               prob=0.75, 
+               bootstrap = "none",
+)
+
+psy_data = data.frame(
+  analysis = fit$curves$analysis,
+  x = fit$curves$x,
+  y = fit$curves$y
+)
+
+df_accuracy_T1T2_exp2 = aggregate(P.T2.T1. ~ sub*lag_cond*analysis, data = df_accuracy_T1T2_exp2, FUN = 'mean')
+
+anovakun(df_accuracy_T1T2_exp2,"sAB",long=T, peta=T)
+anova_BP_exp2 = forDrawingSigANOVA
+
+df_accuracy_T1T2_exp2$sub = factor(df_accuracy_T1T2_exp2$sub ,levels = unique(df_accuracy_T1T2_exp2$sub))
+df_accuracy_T1T2_exp2$lag_cond = factor(df_accuracy_T1T2_exp2$lag_cond,levels = unique(df_accuracy_T1T2_exp2$lag_cond))
+df_accuracy_T1T2_exp2$analysis = factor(df_accuracy_T1T2_exp2$analysis,levels = unique(df_accuracy_T1T2_exp2$analysis))
+
+set.seed(bayes_factor_seed)
+bf_table_exp2 = anovaBF(P.T2.T1. ~ lag_cond*analysis + sub, data=df_accuracy_T1T2_exp2, whichRandom = "sub",progress=FALSE)
+
+df_phase_covariate_exp2 <- df
+df_phase_covariate_exp2 <- df_phase_covariate_exp2[df_phase_covariate_exp2$condition=="Both",]
+df_phase_covariate_exp2 <- aggregate(cbind(P.T2.T1., PD) ~ sub*lag_cond*analysis, data = df_phase_covariate_exp2, FUN = 'mean')
+df_phase_covariate_exp2$sub <- factor(df_phase_covariate_exp2$sub, levels = unique(df_phase_covariate_exp2$sub))
+df_phase_covariate_exp2$lag_cond <- factor(df_phase_covariate_exp2$lag_cond, levels = unique(df_phase_covariate_exp2$lag_cond))
+df_phase_covariate_exp2$analysis <- factor(df_phase_covariate_exp2$analysis, levels = unique(df_phase_covariate_exp2$analysis))
+
+m_phase_cov_null <- lmer(P.T2.T1. ~ lag_cond + PD + (1 + analysis|sub), data = df_phase_covariate_exp2, REML = FALSE,
+                         control = lmerControl(optimizer = "bobyqa"))
+m_phase_cov_analysis <- lmer(P.T2.T1. ~ lag_cond + analysis + PD + (1 + analysis|sub), data = df_phase_covariate_exp2, REML = FALSE,
+                             control = lmerControl(optimizer = "bobyqa"))
+m_phase_cov_interaction <- lmer(P.T2.T1. ~ lag_cond*analysis + PD + (1 + analysis|sub), data = df_phase_covariate_exp2, REML = FALSE,
+                                control = lmerControl(optimizer = "bobyqa"))
+## phase-only model (lag + phase) vs. phase + baseline pupil size
+m_phase_only <- lmer(P.T2.T1. ~ lag_cond + analysis + (1 + analysis|sub), data = df_phase_covariate_exp2, REML = FALSE,
+                     control = lmerControl(optimizer = "bobyqa"))
+lrt_phase_add_pd <- anova(m_phase_only, m_phase_cov_analysis)
+lrt_phase_cov_analysis <- anova(m_phase_cov_null, m_phase_cov_analysis)
+lrt_phase_cov_interaction <- anova(m_phase_cov_analysis, m_phase_cov_interaction)
+m_phase_cov_max_null <- lmer(P.T2.T1. ~ lag_cond + PD + (1 + analysis + PD|sub) + (1|sub:lag_cond), data = df_phase_covariate_exp2,
+                         REML = FALSE, control = lmerControl(optimizer = "bobyqa"))
+m_phase_cov_max_full <- lmer(P.T2.T1. ~ lag_cond + analysis + PD + (1 + analysis + PD|sub) + (1|sub:lag_cond), data = df_phase_covariate_exp2,
+                         REML = FALSE, control = lmerControl(optimizer = "bobyqa"))
+lrt_phase_cov_max <- anova(m_phase_cov_max_null, m_phase_cov_max_full)
+phase_covariate_maximal_exp2 <- data.frame(chisq = lrt_phase_cov_max$Chisq[2], df = lrt_phase_cov_max$Df[2],
+                                           p = lrt_phase_cov_max$`Pr(>Chisq)`[2], singular = isSingular(m_phase_cov_max_full),
+                                           pd_beta = unname(fixef(m_phase_cov_max_full)["PD"]),
+                                           pd_p = summary(m_phase_cov_max_full)$coefficients["PD", "Pr(>|t|)"])
+phase_cov_coefficients <- as.data.frame(summary(m_phase_cov_analysis)$coefficients)
+phase_t <- phase_cov_coefficients["analysisSBP", "t value"]
+phase_df <- phase_cov_coefficients["analysisSBP", "df"]
+
+phase_covariate_exp2 <- list(
+  model_comparison = data.frame(
+    model = c("lag_plus_pupil", "lag_plus_phase_plus_pupil", "lag_by_phase_plus_pupil"),
+    AIC = c(AIC(m_phase_cov_null), AIC(m_phase_cov_analysis), AIC(m_phase_cov_interaction)),
+    BIC = c(BIC(m_phase_cov_null), BIC(m_phase_cov_analysis), BIC(m_phase_cov_interaction)),
+    stringsAsFactors = FALSE
+  ),
+  phase_test = data.frame(
+    chisq = lrt_phase_cov_analysis$Chisq[2],
+    df = attr(logLik(m_phase_cov_analysis), "df") - attr(logLik(m_phase_cov_null), "df"),
+    p = lrt_phase_cov_analysis$`Pr(>Chisq)`[2],
+    partial_r = sign(phase_t) * sqrt(phase_t^2 / (phase_t^2 + phase_df)),
+    partial_R2 = phase_t^2 / (phase_t^2 + phase_df),
+    stringsAsFactors = FALSE
+  ),
+  interaction_test = data.frame(
+    chisq = lrt_phase_cov_interaction$Chisq[2],
+    df = attr(logLik(m_phase_cov_interaction), "df") - attr(logLik(m_phase_cov_analysis), "df"),
+    p = lrt_phase_cov_interaction$`Pr(>Chisq)`[2],
+    stringsAsFactors = FALSE
+  ),
+  coefficients = phase_cov_coefficients,
+  phase_only_vs_baseline = data.frame(
+    model = c("lag_plus_phase", "lag_plus_phase_plus_pupil"),
+    AIC = c(AIC(m_phase_only), AIC(m_phase_cov_analysis)),
+    BIC = c(BIC(m_phase_only), BIC(m_phase_cov_analysis)),
+    stringsAsFactors = FALSE
+  ),
+  baseline_test = data.frame(
+    chisq = lrt_phase_add_pd$Chisq[2],
+    df = lrt_phase_add_pd$Df[2],
+    p = lrt_phase_add_pd$`Pr(>Chisq)`[2],
+    stringsAsFactors = FALSE
+  ),
+  coefficients_phase_only = as.data.frame(summary(m_phase_only)$coefficients)
+)
+
+config$line=F
+config$label_x="Lag"
+config$label_y="Accuracy(T2|T1)"
+config$grCol =  c("#4c72b0","#c44e52")
+
+df_box_T2T1_exp2 <- df_accuracy_T1T2_exp2
+df_box_T2T1_exp2$lag_num <- as.numeric(as.character(df_box_T2T1_exp2$lag_cond))
+
+## use the raw data range too, so any outlier point is inside the panel
+y_box_lo <- min(df_box_T2T1_exp2$P.T2.T1., psy_data$y, na.rm = TRUE)
+y_box_hi <- max(df_box_T2T1_exp2$P.T2.T1., psy_data$y, na.rm = TRUE)
+
+
+## y ticks / axis span the box+whisker extent (rounded to 0.1)
+config$ylim = round(seq(floor(y_box_lo * 10) / 10, ceiling(y_box_hi * 10) / 10, 0.1), 2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+
+A <- na.omit(df_pse_thre$threshold_boot[df_pse_thre$analysis=="LBP"])
+Bv <- na.omit(df_pse_thre$threshold_boot[df_pse_thre$analysis=="SBP"])
+
+diffs <- replicate(20000, sample(A,1) - sample(Bv,1))
+title = paste0("95% CI[",round(quantile(diffs,0.025),3),",",round(quantile(diffs,0.975),3),"]")
+
+fix_coord = function(p, xlim_c, ylim_ticks){
+  pad = diff(range(ylim_ticks)) * (1/0.8 - 1) / 2
+  p = p + coord_cartesian(xlim = xlim_c, ylim = c(min(ylim_ticks) - pad, max(ylim_ticks) + pad), expand = FALSE)
+  for(iL in seq_along(p$layers)){
+    l = p$layers[[iL]]
+    if(inherits(l$geom, "GeomSegment") && is.data.frame(l$data) && !is.null(l$data$yend) &&
+       isTRUE(all(l$data$y == l$data$yend)) && isTRUE(all(abs(l$data$xend - l$data$x) >= 1))){
+      p$layers[[iL]]$data$y = min(ylim_ticks) - pad
+      p$layers[[iL]]$data$yend = min(ylim_ticks) - pad
+    }
+  }
+  p
+}
+col_ph = c("SBP" = "#c44e52", "LBP" = "#4c72b0")
+lab_ph = c("SBP" = "PD phase", "LBP" = "PC phase")
+fig4_theme = theme(axis.text = element_text(size = 35), axis.title = element_text(size = 31),
+                   legend.text = element_text(size = 25), legend.title = element_blank(),
+                   plot.tag = element_text(size = 49, face = "bold", family = fontFamily))
+
+ci_thr = quantile(diffs, c(0.025, 0.975))
+sig_c = ifelse(ci_thr[1] > 0 | ci_thr[2] < 0, "*", "n.s.")
+config$ylim = round(seq(0,1,0.2),2); config$xlim = round(seq(1,5,1),2)
+fig4_C = setEmptyStyle(ggplot(df_box_T2T1_exp2, aes(x = lag_num, y = P.T2.T1., colour = analysis, fill = analysis)) +
+    geom_boxplot(aes(group = interaction(lag_cond, analysis)), width = 0.55, position = position_dodge(width = 0.7),
+                 alpha = 0.20, outlier.size = 1.2, outlier.stroke = 0, linewidth = 0.4) +
+    annotate("segment", x = 3.66, xend = 3.66, y = 0.03, yend = 0.13, linewidth = 0.4) +
+    annotate("segment", x = 3.66, xend = 3.74, y = 0.03, yend = 0.03, linewidth = 0.4) +
+    annotate("segment", x = 3.66, xend = 3.74, y = 0.13, yend = 0.13, linewidth = 0.4) +
+    annotate("text", x = 3.6, y = 0.08, label = sig_c, size = ifelse(sig_c == "*", 10, 6), hjust = 1, vjust = 0.75, family = fontFamily) +
+    scale_colour_manual(values = col_ph, breaks = names(lab_ph), labels = lab_ph) +
+    scale_fill_manual(values = col_ph, breaks = names(lab_ph), labels = lab_ph) +
+    scale_x_continuous(breaks = 1:5) +
+    labs(x = "Lag", y = "Accuracy for T2|T1", tag = "C"), config) +
+  fig4_theme + theme(legend.position = c(1, 0.08), legend.justification = c(1, 0))
+fig4_C = fix_coord(fig4_C, c(0.5, 5.5), config$ylim)
+
+p <- ggplot(df_pse_thre, aes(x = threshold_boot, fill = analysis)) +
+  geom_histogram(
+    aes(y = after_stat(count / sum(count))),
+    bins = 100,
+    position = "identity",
+    alpha = .6
+  ) +
+  scale_fill_manual(values = config$grCol, labels = phase_disp) +
+  xlab("PSE") +
+  ylab("Probability") +
+  ggtitle(title)+
+  theme(legend.justification=c(0,1), legend.position=c(0,1))+
+  geom_point(aes(x=mean(df_pse_thre[df_pse_thre$analysis == "SBP",]$thresholds),
+                 y=0.054),shape=6,size=6,color=config$grCol[2])+
+  geom_point(aes(x=mean(df_pse_thre[df_pse_thre$analysis == "LBP",]$thresholds),
+                 y=0.054),shape=6,size=6,color=config$grCol[1])
+
+config$ylim = round(seq(0,0.05,0.01),4)
+config$ylim_stride = 0.01
+config$xlim = round(seq(2,4,0.5),4)
+config$xlim_stride = 0.1
+
+p = setEmptyStyle(p,config)+
+  scale_x_continuous(breaks = config$xlim)+
+  coord_cartesian(xlim = c(1.75, 4.25), ylim = c(-0.005, 0.058), expand = FALSE)+
+  theme(
+    plot.title = element_text(size = 20)
+  )
+
+p_all$pseBootstrap = p
+p_all$pseBootstrap$size = c(8,8)
+
+df_accuracy_T1T2 = df
+df_accuracy_T1T2 = df_accuracy_T1T2[df_accuracy_T1T2$condition=="Both",]
+
+df_accuracy_T1T2 = aggregate(P.T2.T1. ~ sub*lag_cond*analysis, data = df_accuracy_T1T2, FUN = 'mean')
+
+df_diff = df_accuracy_T1T2[df_accuracy_T1T2$analysis=="SBP",]
+df_diff$P.T2.T1.=df_diff$P.T2.T1.-df_accuracy_T1T2[df_accuracy_T1T2$analysis=="LBP",]$P.T2.T1.
+
+m <- lmer( P.T2.T1. ~ lag_cond + (1| sub), data = df_diff)
+lag_maximal_exp2 <- fit_lag_maximal(df_diff, "lag_cond")
+
+sm = summary(m)
+coef_df <- extract_coef_info(sm, c("lag_cond"))
+    
+intercept = sm$coefficients["(Intercept)", "Estimate"]
+
+lag_vals <- seq(1, 5, by = 0.1)
+
+ribbon_df = data.frame(
+  lag = lag_vals,
+  y = intercept + sm$coefficients["lag_cond", "Estimate"] * lag_vals,
+  ymin = intercept- sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["lag_cond", "Estimate"] * lag_vals,
+  ymax = intercept + sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["lag_cond", "Estimate"] * lag_vals
+)
+
+config$grCol=NULL
+config$ylim = round(seq(-0.025,0.125,0.025),3)
+config$ylim_stride = 0.01
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+
+```
+
+## Baseline Pupil size
+### load data
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_pupil <- load_json_dataframe(folderName, "df_pupil.json")
+
+```
+
+### time-course of pupil around T1
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_pupil$data_x = df_pupil$time
+
+config$label_x="Time from T2 onset[s]"
+config$label_y="Pupil size[mm]"
+config$linetype=F
+config$grCol=c('#d97168','gray')
+config$lim_x=c(-1.2,1.2)
+config$lim_y=c(0.1,0.6)
+
+config$grCol = c("#4c72b0","#c44e52")
+
+config$ylim = round(seq(5.8,6.4,0.1),2)
+config$ylim_stride = 0.01
+config$xlim = round(seq(-1.0,0.5,0.25),2)
+config$xlim_stride = 0.1
+
+
+df_pupil_ave = aggregate(. ~ sub*analysis, data = df_pupil[(df_pupil$time<=0.5)&(df_pupil$time>-1),], FUN = 'mean')
+
+x_pd = df_pupil_ave[(df_pupil_ave$analysis=="SBP"),]$PDR_mm
+x_pc = df_pupil_ave[(df_pupil_ave$analysis=="LBP"),]$PDR_mm
+
+anovaTable$ttest_pupil_size_exp2= getTtestSummary(x_pd,x_pc)
+
+
+config$ylim = round(seq(5.8,6.4,0.1),2)
+config$ylim_stride = 0.05
+config$xlim = round(seq(1,2,1),2)
+config$xlim_stride = 0.5
+
+
+## --- Figure 4 A, B (helpers fix_coord / col_ph / fig4_theme: see Figure 4C above)
+fig4 = list()
+fig4$C = fig4_C
+
+## A: pupil around T1 onset (= phase detection), subject means -> mean +- SE
+d = aggregate(PDR_mm ~ sub*analysis*time, data = df_pupil[df_pupil$time >= -1, ], FUN = mean)
+d_m = aggregate(PDR_mm ~ analysis*time, data = d, FUN = mean)
+d_m$se = aggregate(PDR_mm ~ analysis*time, data = d, FUN = sd)$PDR_mm / sqrt(length(unique(d$sub)))
+
+d_b = aggregate(PDR_mm ~ analysis, data = df_pupil_ave, FUN = mean)
+d_b$se = aggregate(PDR_mm ~ analysis, data = df_pupil_ave, FUN = sd)$PDR_mm / sqrt(length(unique(df_pupil_ave$sub)))
+d_b$x = ifelse(d_b$analysis == "LBP", 1, 2)
+
+## common y ticks for A and B (0.1 steps covering the SE bands)
+y_ab = round(seq(floor(min(d_m$PDR_mm - d_m$se, d_b$PDR_mm - d_b$se) * 10) / 10,
+                 ceiling(max(d_m$PDR_mm + d_m$se, d_b$PDR_mm + d_b$se) * 10) / 10, 0.1), 2)
+
+config$ylim = y_ab; config$xlim = round(seq(-1.0,0.5,0.25),2)
+fig4$A = setEmptyStyle(ggplot(d_m, aes(x = time, y = PDR_mm, colour = analysis, fill = analysis)) +
+    geom_ribbon(aes(ymin = PDR_mm - se, ymax = PDR_mm + se), alpha = 0.08, linewidth = 0.1, show.legend = FALSE) +
+    geom_line(linewidth = 0.6) +
+    geom_vline(xintercept = 0, linewidth = 0.5) +
+    scale_colour_manual(values = col_ph, breaks = names(lab_ph), labels = lab_ph) +
+    scale_fill_manual(values = col_ph, guide = "none") +
+    scale_x_continuous(breaks = config$xlim, labels = sprintf("%.2f", config$xlim)) +
+    labs(x = "Time from T1 onset[s]", y = "Pupil diameter [mm]", tag = "A"), config) +
+  fig4_theme + theme(axis.text.x = element_text(size = 26, angle = 30, hjust = 1, vjust = 1),
+                     legend.position = c(1, 1), legend.justification = c(1, 1), legend.key.width = unit(1.2, "cm"))
+fig4$A = fix_coord(fig4$A, c(-1.125, 0.625), y_ab)
+
+## B: PC vs PD, paired t-test label above a bracket
+p_b = anovaTable$ttest_pupil_size_exp2$ttest$p.value
+sig_b = data.frame(y = max(d_b$PDR_mm + d_b$se) + 0.02,
+                   label = ifelse(p_b < 0.05, "*", ifelse(p_b < 0.1, "+", "n.s.")))
+config$xlim = c(1, 2)
+fig4$B = setEmptyStyle(ggplot(d_b, aes(x = x, y = PDR_mm, colour = analysis)) +
+    geom_errorbar(aes(ymin = PDR_mm - se, ymax = PDR_mm + se), width = 0.1, linewidth = 0.3, colour = "black") +
+    pt_w(7) +
+    geom_segment(data = sig_b, aes(x = 1, xend = 2, y = y, yend = y), inherit.aes = FALSE, linewidth = 0.3) +
+    geom_text(data = sig_b, aes(x = 1.5, y = y, label = label), inherit.aes = FALSE,
+              size = ifelse(sig_b$label == "n.s.", 6, 10), vjust = -0.3, family = fontFamily) +
+    scale_colour_manual(values = col_ph, guide = "none") +
+    scale_x_continuous(breaks = 1:2, labels = c("PC phase", "PD phase")) +
+    labs(x = NULL, y = "Averaged pupil diameter [mm]", tag = "B"), config) +
+  fig4_theme + theme(axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1))
+fig4$B = fix_coord(fig4$B, c(0.5, 2.5), y_ab)
+
+```
+
+### pupil bin
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_accuracy = df
+df_accuracy = df_accuracy[df_accuracy$condition=="Both",]
+df_accuracy$PD_bin = df_accuracy$PD_bin+1
+df_accuracy$y = df_accuracy$P.T2.T1.
+
+df_accuracy_bin = aggregate(y ~ sub*analysis*PD_bin, data = df_accuracy, FUN = 'mean')
+pupil_bin_model_comparison_exp2 <- fit_pupil_bin_model_comparison(df_accuracy_bin, "analysis")
+pupil_bin_maximal_exp2 <- fit_pupil_bin_maximal(df_accuracy_bin, "analysis")
+pupil_bin_u_maximal_exp2 <- fit_pupil_bin_u_maximal(df_accuracy_bin, "analysis")
+pupil_bin_glmm_exp2 <- fit_pupil_bin_glmm(df_accuracy, "analysis", "lag_cond")
+  
+modelList = c(
+  "y ~ PD_bin + (1| sub)"
+)
+
+estimateAll_exp2 = NULL
+ribbon_df = NULL
+for(iSession in unique(df_accuracy$analysis)){
+  for( m in modelList){
+    
+    df_model = df_accuracy_bin[df_accuracy_bin$analysis==iSession,]
+    m_null <- lmer(y ~ 1 + (1| sub), data = df_model, REML = FALSE)
+    m <- lmer(y ~ PD_bin + (1| sub), data = df_model, REML = FALSE)
+    lrt <- anova(m_null, m)
+    sm = summary(m)
+    terms <- c("PD")
+    coef_df <- extract_coef_info(sm, c("PD_bin"))
+    
+    intercept = sm$coefficients["(Intercept)", "Estimate"]
+    coef_df$formula = c(sm$call$formula)
+    coef_df$analysis = iSession
+    coef_df$pVal = lrt$`Pr(>Chisq)`[2]
+    coef_df$chisq = lrt$Chisq[2]
+    coef_df$chisq_df = 1
+    coef_df$intercept = intercept
+    coef_df$slope = sm$coefficients["PD_bin", "Estimate"]
+    coef_df$intercept_min = intercept - sm$coefficients["(Intercept)", "Std. Error"]
+    coef_df$intercept_max = intercept + sm$coefficients["(Intercept)", "Std. Error"]
+    coef_df$x_position = 1.5
+    coef_df$y_position = mean(df_accuracy[(df_accuracy$analysis==iSession)&
+                (df_accuracy$PD_bin==1),]$y)+0.03
+    
+    if (coef_df$pVal<0.001){
+      coef_df$pLabel = 'p<0.001'
+    }else{
+      coef_df$pLabel = paste0('p=',round(coef_df$pVal,4))
+    }
+
+    estimateAll_exp2 = rbind(estimateAll_exp2,coef_df)
+    
+    pupil_vals <- seq(1, 5, by = 0.1)
+    ribbon_df = rbind(ribbon_df,
+                      data.frame(
+                        analysis = iSession,
+                        pupil_bin = pupil_vals,
+                        y = intercept + sm$coefficients["PD_bin", "Estimate"] * pupil_vals,
+                        ymin = intercept- sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["PD_bin", "Estimate"] * pupil_vals,
+                        ymax = intercept + sm$coefficients["(Intercept)", "Std. Error"] + sm$coefficients["PD_bin", "Estimate"] * pupil_vals
+                      ))
+    
+  }
+}
+
+df_accuracy = df_accuracy_bin
+
+config$label_x="Pupil bin"
+config$label_y="Accuracy"
+## analysis levels c("LBP","SBP"): PC phase = blue, PD phase = red (as in Fig. 4)
+config$grCol = c("#4c72b0","#c44e52")
+ 
+config$linetype=F
+
+config$ylim = round(seq(0.45,0.75,0.05),2)
+config$ylim_stride = 0.02
+config$xlim = round(seq(1,5,1),2)
+config$xlim_stride = 0.5
+
+
+sup5 = list()
+d_m = aggregate(y ~ analysis*PD_bin, data = df_accuracy, FUN = mean)
+d_m$se = aggregate(y ~ analysis*PD_bin, data = df_accuracy, FUN = sd)$y / sqrt(length(unique(df_accuracy$sub)))
+fill_ph = c("SBP" = "#FFB3B3", "LBP" = "#7FD8D8")
+p_lab = estimateAll_exp2[, c("analysis", "intercept", "slope", "pVal")]
+p_lab$label = ifelse(p_lab$pVal < 0.001, "p<0.001", sprintf("p=%.3f", p_lab$pVal))
+p_lab$x = 5.1
+p_lab$y = p_lab$intercept + p_lab$slope * 5.1
+
+config$ylim = round(seq(0.45,0.7,0.05),2); config$xlim = round(seq(1,5,1),2)
+sup5$C = setEmptyStyle(ggplot(d_m, aes(x = PD_bin, y = y, colour = analysis)) +
+    geom_ribbon(data = ribbon_df, aes(x = pupil_bin, ymin = ymin, ymax = ymax, fill = analysis), inherit.aes = FALSE, alpha = 0.4) +
+    geom_line(data = ribbon_df, aes(x = pupil_bin, y = ymin, colour = analysis), linewidth = 0.4) +
+    geom_line(data = ribbon_df, aes(x = pupil_bin, y = ymax, colour = analysis), linewidth = 0.4) +
+    geom_line(data = ribbon_df, aes(x = pupil_bin, y = y, colour = analysis), linewidth = 0.4) +
+    geom_errorbar(aes(ymin = y - se, ymax = y + se), width = 0.15, linewidth = 0.3, colour = "black") +
+    pt_w(7) +
+    geom_text(data = p_lab, aes(x = x, y = y, label = label, colour = analysis), inherit.aes = FALSE,
+              size = 25 / .pt, hjust = 0, family = fontFamily) +
+    scale_colour_manual(values = col_ph, breaks = names(lab_ph), labels = lab_ph) +
+    scale_fill_manual(values = fill_ph, guide = "none") +
+    guides(colour = guide_legend(override.aes = list(linetype = 0, linewidth = 0, size = 5))) +
+    labs(x = "Pupil bin", y = "Accuracy for T2|T1", tag = "C"), config) +
+  scale_x_continuous(breaks = 1:5) +
+  fig4_theme + theme(legend.position = c(0.02, 0.02), legend.justification = c(0, 0))
+## extra space right of bin 5 for the p labels
+sup5$C = fix_coord(sup5$C, c(0.5, 6.3), config$ylim)
+
+```
+
+### Inter-sequence interval
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+df_interval_exp2 <- load_json_df(folderName, "df_interval.json")
+df_interval_exp2$analysis <- factor(df_interval_exp2$analysis, levels = c("LBP", "SBP"))
+
+df_interval_sub_exp2 <- aggregate(interval ~ sub*analysis, data = df_interval_exp2,
+                                  FUN = function(x) c(mean = mean(x), sd = sd(x)))
+df_interval_sub_exp2 <- do.call(data.frame, df_interval_sub_exp2)
+names(df_interval_sub_exp2) <- c("sub", "analysis", "mean", "sd")
+
+interval_summary_exp2 <- do.call(rbind, lapply(levels(df_interval_exp2$analysis), function(a){
+  s <- df_interval_sub_exp2[df_interval_sub_exp2$analysis == a, ]
+  v <- df_interval_exp2[df_interval_exp2$analysis == a, "interval"]
+  data.frame(analysis = a, n_sub = nrow(s),
+             mean = mean(s$mean), sd = sd(s$mean), within_sd = mean(s$sd),
+             min = min(v), max = max(v))
+}))
+
+config$grCol = c("#4c72b0","#c44e52")
+config$label_x = ""
+config$label_y = "Inter-sequence interval [s]"
+
+p_all$SupFigure4 = ggplot(df_interval_sub_exp2, aes(x = analysis, y = mean, colour = analysis, fill = analysis)) +
+  geom_boxplot(width = 0.5, alpha = 0.20, outlier.shape = NA, linewidth = 0.4) +
+  geom_jitter(width = 0.08, height = 0, size = 2.5, alpha = 0.7, stroke = 0) +
+  scale_colour_manual(values = config$grCol, labels = phase_disp) +
+  scale_fill_manual(values = config$grCol, labels = phase_disp) +
+  scale_x_discrete(labels = phase_disp) +
+  xlab(config$label_x) + ylab(config$label_y) +
+  theme(legend.position = "none", axis.ticks.x = element_blank(), axis.line.x = element_blank())
+
+config$ylim = round(seq(6, 10, 1), 2)
+config$ylim_stride = 0.2
+config$xlim = round(seq(1, 2, 1), 2)
+config$xlim_stride = 0.5
+
+p_all$SupFigure4 = setEmptyStyle(p_all$SupFigure4, config)
+p_all$SupFigure4$size_mm = c(figsize_w/2, figsize_w/2*10/8)
+
+```
+
+### Combine figs
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+
+sup2_ab = function(d, yname, cond, xlabs, ylab, y_ticks, tag){
+  d = d[d$condition %in% cond, ]
+  d$y = d[[yname]]
+  d_m = aggregate(y ~ condition*analysis, data = d, FUN = mean)
+  d_m$se = aggregate(y ~ condition*analysis, data = d, FUN = sd)$y / sqrt(length(unique(d$sub)))
+  d_m$x = match(d_m$condition, cond) + ifelse(d_m$analysis == "LBP", -0.06, 0.06)
+  config$ylim = y_ticks; config$xlim = c(1, 2)
+  p = setEmptyStyle(ggplot(d_m, aes(x = x, y = y, colour = analysis, group = analysis)) +
+      geom_line(linewidth = 0.4) +
+      geom_errorbar(aes(ymin = y - se, ymax = y + se), width = 0.1, linewidth = 0.3, colour = "black") +
+      pt_w(7) +
+      scale_colour_manual(values = col_ph, breaks = names(lab_ph), labels = lab_ph) +
+      guides(colour = guide_legend(override.aes = list(linetype = 0, linewidth = 0, size = 5))) +
+      scale_x_continuous(breaks = 1:2, labels = xlabs) +
+      labs(x = NULL, y = ylab, tag = tag), config) +
+    fig4_theme + theme(legend.position = c(1, 0.02), legend.justification = c(1, 0))
+  fix_coord(p, c(0.5, 2.5), y_ticks)
+}
+sup5$A = sup2_ab(df_accuracy_T1_exp2, "hit_t1", c("Both", "T1_only"), c("T1T2", "T1 only"),
+                 "Accuracy for T1", round(seq(0.9,1,0.02),2), "A")
+sup5$B = sup2_ab(df_accuracy_T2_exp2, "hit_t2", c("Both", "T2_only"), c("T1T2", "T2 only"),
+                 "Accuracy for T2", round(seq(0.5,1,0.1),2), "B")
+p_all$SupFigure5 = patchwork::wrap_plots(sup5$A, sup5$B, sup5$C, nrow = 1, widths = c(0.27, 0.27, 0.46)) &
+  theme(plot.margin = margin(10, 15, 5, 5, "pt")) & std_axis
+## same size as the published Fig. 2 (1567 x 591 pt)
+p_all$SupFigure5$size_mm = c(figsize_w, figsize_w*591.033/1567)
+
+df_ex2_trace <- load_json_df(folderName, "df_example_trace_exp2.json")
+df_ex2_events <- load_json_df(folderName, "df_example_events_exp2.json")
+ex2_win = list(PD = c(120, 220), PC = c(280, 380))
+
+ex2_panel = function(ph, tag){
+  w = ex2_win[[ph]]
+  tr = df_ex2_trace[df_ex2_trace$phase == ph & df_ex2_trace$time >= w[1] & df_ex2_trace$time <= w[2], ]
+  ev = df_ex2_events[df_ex2_events$phase == ph & df_ex2_events$time >= w[1] & df_ex2_events$time <= w[2], ]
+  y_lo = floor(min(tr$pupil, na.rm = TRUE) * 2) / 2
+  y_hi = ceiling(max(tr$pupil, na.rm = TRUE) * 2) / 2
+  lab = c("T1 onset", "Raw pupil data", "Lowpass-filtered", "Real-time detection")
+  col = setNames(c("black", "#b2e0d2", "#4c72b0", unname(col_ph[ifelse(ph == "PD", "SBP", "LBP")])), lab)
+  p = ggplot(tr, aes(x = time)) +
+    geom_line(aes(y = pupil, colour = "Raw pupil data"), linewidth = 0.8) +
+    geom_line(aes(y = pupil_lp, colour = "Lowpass-filtered"), linewidth = 1.2) +
+    geom_segment(data = ev[ev$event == "T1", ],
+                 aes(x = time, xend = time, y = y_lo, yend = pupil_lp, colour = "T1 onset"),
+                 linetype = "dotdash", linewidth = 0.4) +
+    geom_point(data = ev[ev$event == "trigger", ], aes(x = time, y = pupil_lp),
+               colour = "white", shape = 17, size = 7 + 2 * pt_ring, show.legend = FALSE) +
+    geom_point(data = ev[ev$event == "trigger", ], aes(x = time, y = pupil_lp, colour = "Real-time detection"),
+               shape = 17, size = 7) +
+    scale_colour_manual(name = NULL, breaks = lab, values = col) +
+    guides(colour = guide_legend(nrow = 2, byrow = TRUE, override.aes = list(
+      linetype = c("dotdash", "solid", "solid", "blank"),
+      linewidth = c(0.8, 1.2, 1.2, 0),
+      shape = c(NA, NA, NA, 17),
+      size = c(NA, NA, NA, 7)))) +
+    labs(x = "Time [s]", y = "Pupil diameter [mm]", tag = tag,
+         title = ifelse(ph == "PD", "PD-phase triggering", "PC-phase triggering"))
+  config$ylim = seq(y_lo, y_hi, 0.5)
+  config$ylim_stride = 0.05
+  config$xlim = seq(w[1], w[2], 20)
+  config$xlim_stride = 2
+  setEmptyStyle(p, config) + scale_x_continuous(breaks = config$xlim) + fig4_theme +
+    theme(legend.position = "top", legend.justification = c(0, 1), legend.key.width = unit(2, "cm"),
+          axis.title.y = element_text(margin = margin(r = 25)),
+          plot.title = element_text(size = 31, family = fontFamily))
+}
+## only the PD-triggered run is shown (A); B = inter-sequence interval
+supfig4_A = ex2_panel("PD", "A")
+supfig4_B = fix_coord(p_all$SupFigure4, c(0.5, 2.5), round(seq(6, 10, 1), 2)) + labs(tag = "B") + fig4_theme +
+  theme(axis.title.y = element_text(margin = margin(r = 25)))
+p_all$SupFigure4 = patchwork::wrap_plots(supfig4_A, patchwork::plot_spacer(), supfig4_B,
+                                         nrow = 1, widths = c(0.68, 0.06, 0.26)) &
+  theme(plot.margin = margin(10, 15, 5, 5, "pt")) & std_axis
+## same size as the published Fig. 2 (1567 x 591 pt)
+p_all$SupFigure4$size_mm = c(figsize_w, figsize_w*591.033/1567)
+
+p_all$Figure4 = patchwork::wrap_plots(fig4$A, patchwork::plot_spacer(), fig4$B, fig4$C, nrow = 1,
+                                      widths = c(0.40, 0.06, 0.22, 0.38)) &
+  theme(plot.margin = margin(10, 15, 5, 5, "pt")) & std_axis
+p_all$Figure4$size_mm = c(figsize_w,200)
+
+d_sub = aggregate(P.T2.T1. ~ sub*analysis, data = df_box_T2T1_exp2, FUN = mean)
+d_w = reshape(d_sub, idvar = "sub", timevar = "analysis", direction = "wide")
+fig4D_diff = data.frame(sub = d_w$sub, diff = d_w$P.T2.T1..SBP - d_w$P.T2.T1..LBP, x = 1)
+dd = fig4D_diff$diff
+q_d = quantile(dd, c(0.25, 0.75)); iqr_d = q_d[2] - q_d[1]
+out_d = dd < q_d[1] - 1.5 * iqr_d | dd > q_d[2] + 1.5 * iqr_d
+## fixed jitter so that the dots and the outlier rings share the same x positions
+set.seed(1)
+fig4D_diff$xj = 1 + runif(nrow(fig4D_diff), -0.10, 0.10)
+fig4D_diff$col = ifelse(dd > 0, col_ph["SBP"], ifelse(dd < 0, col_ph["LBP"], "gray50"))
+fig4D_diff$outlier = out_d
+p_phase = anova_BP_exp2[anova_BP_exp2$source.col == "analysis", "p.col"]
+y_d = round(seq(floor(min(fig4D_diff$diff) * 10) / 10, ceiling(max(fig4D_diff$diff) * 10) / 10, 0.1), 2)
+config$ylim = y_d; config$xlim = c(0.8, 1.2)
+fig4$D = setEmptyStyle(ggplot(fig4D_diff, aes(x = x, y = diff)) +
+    geom_hline(yintercept = 0, linewidth = 0.4, linetype = "dashed", colour = "gray40") +
+    geom_boxplot(aes(group = x), width = 0.5, alpha = 0.20, outlier.shape = NA, linewidth = 0.4,
+                 colour = "gray30", fill = "gray70") +
+    geom_point(aes(x = xj, y = diff), shape = 21, size = 4, stroke = 0.8 / 1.4226,
+               colour = ifelse(fig4D_diff$outlier, "black", "white"),
+               fill = scales::alpha(fig4D_diff$col, 0.7)) +
+    annotate("text", x = 1, y = max(y_d), label = paste0("p = ", sprintf("%.3f", p_phase)),
+             size = 9, vjust = -0.6, family = fontFamily) +
+    scale_x_continuous(breaks = 1, labels = "PD − PC") +
+    labs(x = NULL, y = "Difference in accuracy for T2|T1", tag = "D"), config) +
+  fig4_theme
+fig4$D = fix_coord(fig4$D, c(0.4, 1.6), y_d)
+tt_all = t.test(dd); tt_excl = t.test(dd[!out_d]); wx = wilcox.test(dd, exact = FALSE)
+loo_p = sapply(seq_along(dd), function(i) t.test(dd[-i])$p.value)
+phase_robust_exp2 = list(
+  n = length(dd), mean = mean(dd), median = median(dd), sd = sd(dd), dz = mean(dd) / sd(dd),
+  n_pos = sum(dd > 0), n_neg = sum(dd < 0), n_tie = sum(dd == 0),
+  t = unname(tt_all$statistic), df = unname(tt_all$parameter), p = tt_all$p.value,
+  wilcox_V = unname(wx$statistic), wilcox_p = wx$p.value,
+  n_out = sum(out_d), out_values = dd[out_d],
+  excl_t = unname(tt_excl$statistic), excl_df = unname(tt_excl$parameter), excl_p = tt_excl$p.value,
+  loo_p_min = min(loo_p), loo_p_max = max(loo_p))
+
+p_all$SupFigure1 = patchwork::wrap_plots(sup1$A, patchwork::plot_spacer(), sup1$B, nrow = 1, widths = c(0.47, 0.06, 0.47)) +
+  patchwork::plot_annotation(tag_levels = list(c("A", "B"))) &
+  theme(plot.tag = element_text(size = 49, face = "bold", family = fontFamily),
+        plot.margin = margin(10, 15, 5, 5, "pt")) & std_axis
+## same size as the published Fig. 2 (1567 x 591 pt)
+p_all$SupFigure1$size_mm = c(figsize_w, figsize_w*591.033/1567)
+
+## Sup. Fig. 6: participant-wise PD - PC difference in P(T2|T1), Exp. 2
+sup5_A = fig4$D + labs(tag = "A")
+sup5_B = p_all$pseBootstrap + xlab("Lag threshold") + labs(tag = "B") + fig4_theme +
+  theme(plot.title = element_text(size = 25), legend.position = c(0.98, 0.98), legend.justification = c(1, 1))
+p_all$SupFigure6 = patchwork::wrap_plots(sup5_A, patchwork::plot_spacer(), sup5_B, nrow = 1, widths = c(0.30, 0.06, 0.64)) &
+  theme(plot.margin = margin(10, 15, 5, 5, "pt")) & std_axis
+## same size as the published Fig. 2 (1567 x 591 pt)
+p_all$SupFigure6$size_mm = c(figsize_w, figsize_w*591.033/1567)
+
+## cutoff-sweep table written by Exp1/dataAnalysis.py (latest Exp1/data/<date>/ folder)
+sweep = read.csv(tail(sort(Sys.glob(paste0(rootFolder, "Exp1/data/*/cutoff_sweep_allbins.csv"))), 1))
+sweep$session = recode_session(sweep$session)
+cuts = sort(unique(sweep$cutoff_hz))
+sweep$xi = match(sweep$cutoff_hz, cuts)
+sweep$star = ifelse(sweep$p_fdr < 0.05, "*", "")
+sup6_panel = function(ev, tb, ylab, tag, y_t = round(seq(-0.1, 0.15, 0.05), 2)){
+  d = sweep[sweep$event == ev & sweep$time_bin == tb, ]
+  config$ylim = y_t; config$xlim = seq_along(cuts)
+  p = setEmptyStyle(ggplot(d, aes(x = xi, y = mean, colour = session)) +
+      geom_hline(yintercept = 0, linewidth = 0.4, linetype = "dashed", colour = "gray40") +
+      geom_line(linewidth = 0.6) +
+      geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem), width = 0.15, linewidth = 0.4, colour = "black") +
+      pt_w(5) +
+      geom_text(aes(y = mean + sign(mean) * (sem + 0.012), label = star), size = 12, vjust = 0.75,
+                show.legend = FALSE, family = fontFamily) +
+      scale_colour_manual(values = c("T1-attend" = "#E69F00", "T1-ignore" = "#738CD9")) +
+      scale_x_continuous(breaks = seq_along(cuts), labels = format(cuts, drop0trailing = TRUE)) +
+      labs(x = "Low-pass cutoff frequency (Hz)", y = ylab, tag = tag), config) +
+    fig4_theme + theme(axis.text.x = element_text(size = 28, angle = 45, hjust = 1),
+                       legend.position = c(0.98, 0.98), legend.justification = c(1, 1))
+  fix_coord(p, c(0.5, length(cuts) + 0.5), y_t)
+}
+sup6_PD = sup6_panel("troughs", 1, "Deviation in accuracy for T2|T1\n(1–2 s after PD onset)", "A") +
+  theme(plot.margin = margin(10, 15, 5, 5, "pt"))
+sup6_PC = sup6_panel("peaks", 1, "Deviation in accuracy for T2|T1\n(1–2 s after PC onset)", "B",
+                                y_t = round(seq(-0.2, 0.1, 0.05), 2)) +
+  theme(plot.margin = margin(10, 15, 5, 5, "pt"))
+p_all$SupFigure3 = patchwork::wrap_plots(sup6_PD, patchwork::plot_spacer(), sup6_PC, nrow = 1, widths = c(0.47, 0.06, 0.47)) & std_axis
+## same size as the published Fig. 2 (1567 x 591 pt)
+p_all$SupFigure3$size_mm = c(figsize_w, figsize_w*591.033/1567)
+cutoff_sweep_exp1 = sweep
+
+```
+
+## Fig. 3B time bins with the T2-evoked pupil response as covariate (Supplementary Material)
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+## trial table written by Exp1/dataAnalysis.py (latest Exp1/data/<date>/ folder)
+d_cov = read.csv(tail(sort(Sys.glob(paste0(rootFolder, "Exp1/data/*/stimulus_evoked_fig3b_trials.csv"))), 1))
+d_cov = d_cov[d_cov$time_bin >= 0 & d_cov$time_bin < 6, ]
+## z-score the T2-evoked response within attention condition
+d_cov$ev_z = ave(d_cov$t2_evoked_auc_0p5_2s, d_cov$session, FUN = function(x) (x - mean(x, na.rm=TRUE)) / sd(x, na.rm=TRUE))
+
+fit_kr = function(x, f){ m = suppressMessages(lmer(f, data = x, REML = TRUE)); summary(m, ddf = "Kenward-Roger")$coefficients }
+fig3b_cov = NULL
+for (s in c("T1-attend","T1-ignore")) for (b in 0:5){
+  xa = d_cov[d_cov$session==s & d_cov$time_bin==b, ]
+  xm = xa[!is.na(xa$ev_z), ]
+  c_all = fit_kr(xa, y_resid_smooth_norm ~ 1 + (1|sub))["(Intercept)",]
+  c_matched = fit_kr(xm, y_resid_smooth_norm ~ 1 + (1|sub))["(Intercept)",]
+  c_cov = fit_kr(xm, y_resid_smooth_norm ~ 1 + ev_z + (1|sub))
+  fig3b_cov = rbind(fig3b_cov, data.frame(session=s, bin=paste0(b,"-",b+1,"s"), n_all=nrow(xa), n=nrow(xm),
+    t_all=c_all[["t value"]], p_all=c_all[["Pr(>|t|)"]],
+    t_matched=c_matched[["t value"]], p_matched=c_matched[["Pr(>|t|)"]],
+    t_cov=c_cov["(Intercept)","t value"], df_cov=c_cov["(Intercept)","df"], p_cov=c_cov["(Intercept)","Pr(>|t|)"],
+    b_ev=c_cov["ev_z","Estimate"], t_ev=c_cov["ev_z","t value"], p_ev=c_cov["ev_z","Pr(>|t|)"],
+    mean_ev_z=mean(xm$ev_z)))
+}
+## FDR (Benjamini-Hochberg) across the time bins of each session
+for (s in unique(fig3b_cov$session)){ i = fig3b_cov$session==s
+  fig3b_cov$fdr_all[i] = p.adjust(fig3b_cov$p_all[i],"BH")
+  fig3b_cov$fdr_matched[i] = p.adjust(fig3b_cov$p_matched[i],"BH")
+  fig3b_cov$fdr_cov[i] = p.adjust(fig3b_cov$p_cov[i],"BH") }
+fig3b_covariate_exp1 = list(perbin = fig3b_cov, n_trials = nrow(d_cov), n_valid = sum(!is.na(d_cov$ev_z)))
+
+## logistic models of T2 detection written by Exp1/dataAnalysis.py (latest Exp1/data/<date>/ folder)
+read_latest_exp1 = function(name) read.csv(tail(sort(Sys.glob(paste0(rootFolder, "Exp1/data/*/", name))), 1))
+stimulus_evoked_exp1 = list(coefficients = read_latest_exp1("stimulus_evoked_model_coefficients.csv"),
+                            comparison = read_latest_exp1("stimulus_evoked_model_comparison.csv"))
+
+```
+
+# Figure
+```{r, message=FALSE, echo=FALSE, warning=FALSE, fig.width = 10, fig.height = 5,include=FALSE}
+
+if(saveFig){
+  mmName = names(p_all)
+  for(iFig in 1:length(mmName)){
+    # save only the main and supplementary figures
+    if(!grepl("^(Figure|SupFigure)", mmName[iFig])) next
+    
+    if(!is.null(p_all[[iFig]]$size_mm)){
+      unitName = "mm"
+      figSize = p_all[[iFig]]$size_mm
+
+    }else if(!is.null(p_all[[iFig]]$size)){
+      unitName = "in"
+      figSize = p_all[[iFig]]$size
+    }else{
+      next
+    }
+    ggsave(file =paste0(saveFolder,mmName[iFig],".pdf"),
+           plot = p_all[[iFig]],
+           width = figSize[1],
+           height = figSize[2],
+           units = unitName)
+    plot(p_all[[iFig]])
+
+  }
+}
+```
+
+```{r, message=FALSE, echo=FALSE, warning=FALSE, fig.width = 10, fig.height = 5,include=FALSE}
+
+res <- list(
+
+  dat_exp1 = dat_exp1, 
+  dat_exp2 = dat_exp2, 
+  df_sub = df_sub,
+
+  # exp1 key objects
+  df_accuracy_T1 = df_accuracy_T1,
+  df_accuracy_T2 = df_accuracy_T2,
+  PT1T2_anova = PT1T2_anova,
+  PT1T2_anova_post=PT1T2_anova_post,
+  bf_table = bf_table,
+  anova_BP = anova_BP,
+  bf_table_BP = bf_table_BP,
+  ttest_BP = ttest_BP,
+  estimateAll = estimateAll,
+  pupil_bin_model_comparison_exp1 = pupil_bin_model_comparison_exp1,
+  pupil_bin_maximal_exp1 = pupil_bin_maximal_exp1,
+  pupil_bin_glmm_exp1 = pupil_bin_glmm_exp1,
+  pupil_bin_u_maximal_exp1 = pupil_bin_u_maximal_exp1,
+  lag_maximal_exp1 = lag_maximal_exp1,
+  timebin_maximal = timebin_maximal,
+  annotation_df_wave_peaks=annotation_df_wave$peaks,
+  annotation_df_wave_troughs=annotation_df_wave$troughs,
+  
+  # exp2 key objects
+  df_accuracy_T1_exp2 = df_accuracy_T1_exp2,
+  df_accuracy_T2_exp2 = df_accuracy_T2_exp2,
+  anova_BP_exp2 = anova_BP_exp2,
+  bf_table_exp2 = bf_table_exp2,
+  phase_covariate_exp2 = phase_covariate_exp2,
+  diffs = diffs,
+  estimateAll_exp2 = estimateAll_exp2,
+  pupil_bin_model_comparison_exp2 = pupil_bin_model_comparison_exp2,
+  pupil_bin_maximal_exp2 = pupil_bin_maximal_exp2,
+  pupil_bin_glmm_exp2 = pupil_bin_glmm_exp2,
+  pupil_bin_u_maximal_exp2 = pupil_bin_u_maximal_exp2,
+  lag_maximal_exp2 = lag_maximal_exp2,
+  phase_covariate_maximal_exp2 = phase_covariate_maximal_exp2,
+  interval_summary_exp2 = interval_summary_exp2,
+  phase_robust_exp2 = phase_robust_exp2,
+  cutoff_sweep_exp1 = cutoff_sweep_exp1,
+  fig3b_covariate_exp1 = fig3b_covariate_exp1,
+  stimulus_evoked_exp1 = stimulus_evoked_exp1,
+
+  anovaTable=anovaTable,
+  
+  stat_t1_exp2_T1_only=stat_t1_exp2$T1_only,
+  stat_t1_exp2_T1_both=stat_t1_exp2$Both,
+  stat_t2_exp2_T2_only=stat_t2_exp2$T2_only,
+  stat_t2_exp2_T1_both=stat_t2_exp2$Both
+)
+
+## other outputs (results objects, knitted documents) go to figure/<date>/output/
+outFolder = paste0(saveFolder, "output/")
+if(!dir.exists(outFolder)) dir.create(outFolder, recursive = TRUE)
+saveRDS(res, paste0(outFolder, "results_objects.rds"))
+```

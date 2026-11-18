@@ -1,0 +1,189 @@
+---
+knit: (function(input, ...) rmarkdown::render(input, output_dir = file.path(dirname(input), "figure", format(Sys.time(), "%Y%m%d"), "output"), envir = globalenv()))
+title: 'Supplementary Materials for “Real-time tracking of pupil-phase fluctuations reveals state-dependent modulation of temporal attentional capacity”'
+output: 
+  word_document:
+     reference_docx: lib/doc_templete.docx
+     
+params:
+  year: 2026
+---
+
+Yuta Suzuki\*, Hsin-I Liao
+
+NTT Communication Science Laboratories, NTT Corporation, Atsugi, Kanagawa, Japan
+
+\*Corresponding author
+
+E-mail: suzukiy970@gmail.com
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+
+if(!exists("dispLineGraph")){
+  source("./lib/common_profile.R", local = TRUE)
+}
+
+## latest results objects written by figure.Rmd (figure/<date>/output/)
+rds_file <- sort(Sys.glob("figure/*/output/results_objects.rds"), decreasing = TRUE)[1]
+res <- readRDS(rds_file)
+list2env(res, envir = environment())
+
+## likelihood-ratio test of the maximal pupil-bin models as "chi2(df) = x, p = y"
+mx <- function(tab, g, what){
+  r <- tab[tab$group == g,]
+  v <- switch(what, max = c(r$max_chisq, 1, r$max_p),
+                    var = c(r$slope_var_chisq, r$slope_var_df, r$slope_var_p))
+  paste0("$\\chi^2$(", v[2], ") = ", round(v[1], 3), ", $p$ ",
+         ifelse(v[3] < 0.001, "< 0.001", paste0("= ", round(v[3], 3))))
+}
+## generic "chi2(df) = x, p = y"
+lrt_txt <- function(chisq, df, p) paste0("$\\chi^2$(", df, ") = ", round(chisq, 3), ", $p$ ",
+                                         ifelse(p < 0.001, "< 0.001", paste0("= ", round(p, 3))))
+## trial-level GLMM row: pupil-bin effect under random intercepts / maximal structure
+gl <- function(tab, g, cv, what){
+  r <- tab[(tab$group == g) & (tab$covariates == cv),]
+  if(what == "ri") lrt_txt(r$ri_chisq, 1, r$ri_p) else lrt_txt(r$max_chisq, 1, r$max_p)
+}
+## model selected by AIC / BIC in the U-shaped model comparison
+model_name <- c(null = "intercept-only", linear = "linear", u_only = "U-shaped")
+best <- function(tab, g, crit){
+  r <- tab[tab$group == g,]
+  unname(model_name[r$model[which.min(r[[crit]])]])
+}
+## time bins whose deviation from the overall accuracy survived FDR correction
+sig_bins <- function(tab, ph, ses, bin_col, offset){
+  r <- tab[(tab$session == ses) & (if(is.null(ph)) TRUE else tab$phaseType == ph) & (tab$p_fdr < 0.05),]
+  sort(r[[bin_col]] + offset)
+}
+## "the X model was selected by both AIC and BIC" / "AIC selected X and BIC selected Y"
+sel <- function(tab, g){
+  a <- best(tab, g, "AIC")
+  b <- best(tab, g, "BIC")
+  if(a == b) paste0("the ", a, " model was selected by both AIC and BIC") else paste0("AIC selected the ", a, " model and BIC selected the ", b, " model")
+}
+same_bins <- all(sapply(c("peaks", "troughs"), function(ph) all(sapply(c("T1-attend", "T1-ignore"), function(ses)
+  identical(sig_bins(timebin_maximal, ph, ses, "time_bin", 1),
+            sig_bins(get(paste0("annotation_df_wave_", ph)), NULL, ses, "time_bin", 0))))))
+
+```
+
+\pagebreak
+### Pupil time courses for hit and miss trials in Experiment 1
+Supplementary Figure 1 shows the pupil time courses for hit and miss trials of T2|T1 detection in Experiment 1, aligned to T2 onset (A) and to T1 onset (B). Panel A shows the absolute pupil diameter and Panel B shows the change from the pupil diameter immediately before T1 onset (−0.2 to 0 s). In both attention conditions, the pupil dilated after T1 onset and reached its maximum approximately 1.5–2 s later. This dilation was larger in hit trials than in miss trials, and the difference was more pronounced in the T1-attend condition. Because T2 was presented shortly after T1, the T1-locked response also includes the response evoked by T2.
+
+```{r, echo=FALSE}
+## T2-evoked pupil response (logistic models) and Fig. 3B time bins with it as covariate
+## numbers with a typographic minus sign (as in the manuscript)
+f2 <- function(x) sub("^-", "−", sprintf("%.2f", x))
+f3 <- function(x) sub("^-", "−", sprintf("%.3f", x))
+p_txt <- function(p, d = 3) if (p < 0.001) "< 0.001" else paste0("= ", sprintf(paste0("%.", d, "f"), p))
+ev_coef <- function(ses) stimulus_evoked_exp1$coefficients[(stimulus_evoked_exp1$coefficients$session == ses) &
+  (stimulus_evoked_exp1$coefficients$model == "baseline_plus_post_evoked") &
+  (stimulus_evoked_exp1$coefficients$term == "t2_evoked_auc_z"), ]
+ev_lrt <- function(ses) stimulus_evoked_exp1$comparison[(stimulus_evoked_exp1$comparison$session == ses) &
+  (stimulus_evoked_exp1$comparison$comparison == "phase_after_post_evoked_auc"), ]
+ev_coef_txt <- function(ses){ r <- ev_coef(ses); paste0("β = ", f2(r$estimate), ", z = ", f2(r$z), ", p ", p_txt(r$p)) }
+ev_lrt_txt <- function(ses){ r <- ev_lrt(ses); paste0("$\\chi^2$(", r$df, ") = ", f2(r$lr_chi2), ", p ", p_txt(r$p, 2)) }
+cv <- fig3b_covariate_exp1$perbin
+cv_row <- function(ses, bin) cv[(cv$session == ses) & (cv$bin == bin), ]
+cv_matched_txt <- function(bin){ r <- cv_row("T1-attend", bin); paste0("t = ", f2(r$t_matched), ", pFDR = ", f3(r$fdr_matched)) }
+cv_cov_txt <- function(bin){ r <- cv_row("T1-attend", bin)
+  paste0("t(", sprintf("%.1f", r$df_cov), ") = ", f2(r$t_cov), ", p ", p_txt(r$p_cov), ", pFDR= ", f3(r$fdr_cov)) }
+cv_ev <- cv_row("T1-attend", "1-2s")
+cv_ign <- cv[cv$session == "T1-ignore", ]
+cv_ign_min <- floor(100 * min(c(cv_ign$fdr_matched, cv_ign$fdr_cov))) / 100
+n_cv <- fig3b_covariate_exp1$n_trials
+n_cv_valid <- fig3b_covariate_exp1$n_valid
+```
+
+We further examined whether the pupil response evoked by T2 accounts for the relationship between the slow pupil phase and T2|T1 detection accuracy. The T2-evoked pupil response was quantified as the mean pupil change from 0.5 to 2.0 s after T2 onset relative to the pre-T2 baseline (−0.2 to 0 s), z-scored within each session. In logistic models of T2 detection that included lag, participant and baseline pupil size, the T2-evoked pupil response strongly predicted T2 detection in both the T1-attend (`r ev_coef_txt("T1-attend")`) and T1-ignore conditions (`r ev_coef_txt("T1-ignore")`). However, the pupil traces of detected and missed trials overlapped until about 0.6 to 0.7 s after T2 onset and diverged only thereafter (Supplementary Figure 1B), in line with the timing of the button press on detected trials. Because missed trials contain no button press, this measure mainly reflects the dilation evoked by the manual response (Hupé et al., 2008). When the pupil phase was added to these models, it did not further improve the fit (T1-attend, `r ev_lrt_txt("T1-attend")`, T1-ignore, `r ev_lrt_txt("T1-ignore")`). We then added the T2-evoked pupil response as a trial-level covariate to the time-bin analysis shown in Figure 3B`r if (n_cv_valid < n_cv) paste0(" (", format(n_cv_valid, big.mark = ","), " of ", format(n_cv, big.mark = ","), " trials with a valid T2-evoked response)") else ""`.`r if (n_cv_valid < n_cv) paste0(" In the trials included in this analysis, the results without the covariate were virtually identical to those in Figure 3B (T1-attend, 1–2 s bin, ", cv_matched_txt("1-2s"), ", 4–5 s bin, ", cv_matched_txt("4-5s"), ").") else ""` The covariate was positively related to the deviation in accuracy (T1-attend, 1–2 s bin, b = `r f3(cv_ev$b_ev)`, t = `r f2(cv_ev$t_ev)`, p `r p_txt(cv_ev$p_ev)`). With the covariate, the effects in the T1-attend condition remained in the same direction but were attenuated (1–2 s bin, `r cv_cov_txt("1-2s")`, 4–5 s bin, `r cv_cov_txt("4-5s")`). In the T1-ignore condition, no time bin reached significance with or without the covariate (all pFDR> `r f2(cv_ign_min)`). Because the covariate itself varied with the time bin (mean z = `r f2(cv_row("T1-attend", "0-1s")$mean_ev_z)` in the 0–1 s bin and `r f2(cv_row("T1-attend", "4-5s")$mean_ev_z)` in the 4–5 s bin in the T1-attend condition), this attenuation likely reflects variance shared through the button-press response rather than an explanation of the phase effect by T2-evoked processing.
+
+**Supplementary Figure 1.** Pupil time courses for hit and miss trials in Experiment 1. (A) Time course of pupil diameter aligned to T2 onset in the T1-attend and T1-ignore conditions. (B) Time course of pupil change from baseline aligned to T1 onset in the T1-attend and T1-ignore conditions. The baseline was the mean pupil diameter from −0.2 to 0 s relative to T1 onset. Red solid and gray dashed lines indicate hit and miss trials, respectively. Shaded areas represent the standard error of the mean across participants. The vertical line indicates target onset.
+
+### Detection accuracy in the PC phase in Experiment 1
+```{r, echo=FALSE}
+pk <- function(bin, ses) annotation_df_wave_peaks[(annotation_df_wave_peaks$x_position == bin) & (annotation_df_wave_peaks$session == ses), "descrip"]
+```
+In contrast to the PD phase, the deviation of T2|T1 detection accuracy from the overall accuracy (collapsed across lag) in the PC phase of Experiment 1 showed the opposite pattern in the T1-attend condition (Supplementary Figure 2). Accuracy was lower than the overall accuracy during the 0–1 s interval (`r pk(1, "T1-attend")`) and the 1–2 s interval (`r pk(2, "T1-attend")`). Accuracy during the 4–5 s interval was numerically higher than the overall accuracy, but this deviation was not significant (`r pk(5, "T1-attend")`). In the T1-ignore condition, no interval showed a significant deviation (e.g., 4–5 s, `r pk(5, "T1-ignore")`).
+
+**Supplementary Figure 2.** Detection accuracy in the PC phase in Experiment 1. (A) The upper panel shows the average pupil response aligned to the onset of the PC phase. The lower panel shows the deviation of bin-wise T2|T1 detection accuracy from the overall accuracy in the PC phase for the T1-attend (orange) and T1-ignore (blue) conditions. Error bars and shaded areas represent the standard error of the mean across participants. (B) Heatmaps showing the lag-dependent deviation of detection accuracy from the overall accuracy in the PC phase for the T1-ignore (top) and T1-attend (bottom) conditions. Each cell represents the deviation for a given lag and time bin.
+
+### Sensitivity of the phase effect to the low-pass cutoff frequency
+```{r, echo=FALSE}
+sw <- cutoff_sweep_exp1
+swv <- function(ev, ses, tb, cut, col) sw[sw$event == ev & sw$session == ses & sw$time_bin == tb & sw$cutoff_hz == cut, col]
+fp <- function(p) ifelse(p < 0.001, "< 0.001", paste0("= ", sprintf("%.3f", p)))
+sw_pd <- sw[sw$event == "troughs" & sw$session == "T1-attend" & sw$time_bin == 1, ]
+sw_pc <- sw[sw$event == "peaks" & sw$session == "T1-attend" & sw$time_bin == 1, ]
+```
+The 0.15-Hz cutoff frequency used in the main analysis was chosen a priori based on Yang et al. (2024, 2026), who applied the same cutoff to human pupil data to identify dilation events associated with infra-slow pupil fluctuations. To examine how this choice affected the phase effect in Experiment 1, we additionally performed a post hoc analysis in which we repeated the phase analysis with `r length(unique(sw$cutoff_hz))` cutoff frequencies ranging from `r min(sw$cutoff_hz)` to `r max(sw$cutoff_hz)` Hz, keeping all other preprocessing and analysis steps identical (Supplementary Figure 3).
+
+**PD phase.** In the T1-attend condition, the increase in T2|T1 detection accuracy 1–2 s after the onset of the PD phase was largest at 0.15 Hz ($p_{FDR}$ `r fp(swv("troughs","T1-attend",1,0.15,"p_fdr"))`) and was also observed at 0.20 Hz before correction ($p$ `r fp(swv("troughs","T1-attend",1,0.2,"p"))`, $p_{FDR}$ `r fp(swv("troughs","T1-attend",1,0.2,"p_fdr"))`) (Supplementary Figure 3A). 
+This increase was not observed at lower cutoffs (0.05 and 0.10 Hz, $p$ ≥ `r sprintf("%.3f", min(sw_pd$p[sw_pd$cutoff_hz < 0.15]))`) or at cutoffs of 0.25 Hz and higher ($p$ ≥ `r sprintf("%.3f", min(sw_pd$p[sw_pd$cutoff_hz >= 0.25]))`). 
+In the T1-ignore condition, no significant deviation was observed at any cutoff after FDR correction ($p_{FDR}$ ≥ `r sprintf("%.3f", min(sw$p_fdr[sw$event == "troughs" & sw$session == "T1-ignore" & sw$time_bin == 1]))`).
+
+**PC phase.** In the T1-attend condition, the decrease in T2|T1 detection accuracy 1–2 s after the onset of the PC phase was observed at 0.15 Hz before correction ($p$ `r fp(swv("peaks","T1-attend",1,0.15,"p"))`, $p_{FDR}$ `r fp(swv("peaks","T1-attend",1,0.15,"p_fdr"))`) and was significant at 0.20 Hz ($p_{FDR}$ `r fp(swv("peaks","T1-attend",1,0.2,"p_fdr"))`) (Supplementary Figure 3B). 
+This decrease was not observed at lower cutoffs (0.05 and 0.10 Hz, $p$ ≥ `r sprintf("%.3f", min(sw_pc$p[sw_pc$cutoff_hz < 0.15]))`) or at cutoffs of 0.25 Hz and higher ($p$ ≥ `r sprintf("%.3f", min(sw_pc$p[sw_pc$cutoff_hz >= 0.25]))`). 
+In the T1-ignore condition, no significant deviation was observed at any cutoff after FDR correction ($p_{FDR}$ ≥ `r sprintf("%.3f", min(sw$p_fdr[sw$event == "peaks" & sw$session == "T1-ignore" & sw$time_bin == 1]))`).
+
+**Supplementary Figure 3.** Sensitivity of the phase effect in Experiment 1 to the low-pass cutoff frequency. (A) Deviation of T2|T1 detection accuracy from the overall accuracy 1–2 s after the onset of the PD phase. (B) Deviation of T2|T1 detection accuracy from the overall accuracy 1–2 s after the onset of the PC phase. Orange and blue indicate the T1-attend and T1-ignore conditions, respectively. Error bars indicate the standard error of the mean across participants. Asterisks indicate deviations that were significant after FDR correction across the six 1-s bins ($p_{FDR}$ < 0.05). The horizontal axis is not linearly scaled.
+
+### Inter-sequence interval in Experiment 2
+Because each sound sequence in Experiment 2 was triggered by the real-time pupil criterion, the interval between successive sequence onsets varied (Supplementary Figure 4A). The distribution of the participant-wise mean inter-sequence interval in each phase condition is shown in Supplementary Figure 4B, and the summary statistics are reported in the main text.
+
+**Supplementary Figure 4.** Real-time pupil-phase triggering in Experiment 2. (A) Example pupil trace of a representative participant during a PD-triggered run. The light green line shows the preprocessed pupil diameter, and the blue line shows the same signal low-pass filtered at 0.15 Hz. Red triangles indicate the times at which the real-time system detected a pupil trough and triggered a sound sequence. Dash-dotted lines indicate T1 onsets. (B) Participant-wise mean interval between successive sound-sequence onsets in the PC phase (blue) and the PD phase (red). Each dot represents one participant.
+
+### Detection accuracy and baseline pupil size in Experiment 2
+In Experiment 2, detection accuracy remained high for T1 (M = `r round(mean(df_accuracy_T1_exp2$hit_t1),3)`, SD = `r round(sd(df_accuracy_T1_exp2$hit_t1),3)`) and T2 (M = `r round(mean(df_accuracy_T2_exp2$hit_t2),3)`, SD = `r round(sd(df_accuracy_T2_exp2$hit_t2),3)`) (Supplementary Figure 5A and 5B). 
+T1 detection accuracy did not differ between the PD and PC phases in either the T1T2 sequence (`r showTtestSummary(stat_t1_exp2_T1_both)`) or the T1-only sequence (`r showTtestSummary(stat_t1_exp2_T1_only)`) (Supplementary Figure 5A). 
+T2 detection accuracy in the T1T2 sequence differed significantly between the PD and PC phases (`r showTtestSummary(stat_t2_exp2_T1_both)`), consistent with Figure 4C, whereas no such difference was observed for the T2-only sequence (`r showTtestSummary(stat_t2_exp2_T2_only)`) (Supplementary Figure 5B). 
+The relationship between baseline pupil size and T2|T1 detection accuracy in each phase condition, described in the main text, is shown in Supplementary Figure 5C.
+
+**Supplementary Figure 5.** Detection accuracy and baseline pupil size in Experiment 2. (A) T1 detection accuracy in the T1T2 and T1-only sequences for the PD phase (red) and the PC phase (blue). (B) T2 detection accuracy in the T1T2 and T2-only sequences. (C) T2|T1 detection accuracy as a function of baseline pupil size. Trials were sorted according to baseline pupil size and divided into five bins from smallest to largest. Lines and shaded bands indicate the fit of the linear mixed-effects model (± standard error of the intercept), and the $p$ values are those of the likelihood-ratio tests of the pupil-bin effect. Error bars represent the standard error of the mean across participants.
+
+### Robustness of the phase effect in Experiment 2
+To examine whether the main effect of phase condition on P(T2|T1) in Experiment 2 was driven by a small number of participants, we computed the difference in P(T2|T1) between the PD and PC phases for each participant, averaged across lags (Supplementary Figure 6A). 
+The mean difference was `r sprintf("%.3f", phase_robust_exp2$mean)` (median = `r sprintf("%.3f", phase_robust_exp2$median)`, $d_z$ = `r sprintf("%.2f", phase_robust_exp2$dz)`), and `r phase_robust_exp2$n_pos` of the `r phase_robust_exp2$n` participants showed higher accuracy in the PD phase than in the PC phase. 
+The effect was also significant with a nonparametric Wilcoxon signed-rank test ($V$ = `r phase_robust_exp2$wilcox_V`, $p$ `r ifelse(phase_robust_exp2$wilcox_p < 0.001, "< 0.001", paste0("= ", sprintf("%.3f", phase_robust_exp2$wilcox_p)))`). 
+Based on the boxplot criterion (1.5 × interquartile range), `r phase_robust_exp2$n_out` participants were identified as outliers (differences of `r paste(sprintf("%.3f", sort(phase_robust_exp2$out_values)), collapse = " and ")`), and the effect remained significant after excluding them ($t$(`r phase_robust_exp2$excl_df`) = `r sprintf("%.2f", phase_robust_exp2$excl_t)`, $p$ `r ifelse(phase_robust_exp2$excl_p < 0.001, "< 0.001", paste0("= ", sprintf("%.3f", phase_robust_exp2$excl_p)))`). 
+In a leave-one-participant-out analysis, the effect remained significant regardless of which participant was excluded ($p$ = `r sprintf("%.3f", phase_robust_exp2$loo_p_min)`–`r sprintf("%.3f", phase_robust_exp2$loo_p_max)`).
+
+**Supplementary Figure 6.** Robustness of the phase effect in Experiment 2. (A) Participant-wise difference in T2|T1 detection accuracy between the PD and PC phases in Experiment 2, averaged across lags. Each dot represents one participant. Red and blue dots indicate participants with higher accuracy in the PD phase and in the PC phase, respectively, and the gray dot indicates a participant with no difference. Dots with a black border indicate participants identified as outliers based on the boxplot criterion. (B) Bootstrap distributions of the 50% lag threshold estimated from the psychometric functions for the PD-phase (red) and PC-phase (blue) conditions (10,000 parametric bootstrap resamples). Triangles indicate the mean threshold of each condition. The 95% confidence interval of the threshold difference between the PC and PD phases (PC − PD) is shown above the panel.
+
+### Maximal random-effects structure of the mixed-effects models
+Following Barr et al. (2013), the pupil-bin models of Experiments 1 and 2 were also fitted with by-participant random slopes for pupil bin ($y \sim pupil\ bin + (1 + pupil\ bin|subject)$). 
+In Experiment 1, the maximal model resulted in a singular fit `r ifelse(all(pupil_bin_maximal_exp1$max_singular), "in both attention conditions", "in some conditions")`, and the random-slope variance did not improve the fit (T1-attend: `r mx(pupil_bin_maximal_exp1, "T1-attend", "var")`, T1-ignore: `r mx(pupil_bin_maximal_exp1, "T1-ignore", "var")`). 
+The test of the pupil-bin effect led to the same conclusion as with random intercepts only (T1-attend: `r mx(pupil_bin_maximal_exp1, "T1-attend", "max")`, T1-ignore: `r mx(pupil_bin_maximal_exp1, "T1-ignore", "max")`). 
+In Experiment 2, the random-slope variance improved the fit (PC phase: `r mx(pupil_bin_maximal_exp2, "LBP", "var")`, PD phase: `r mx(pupil_bin_maximal_exp2, "SBP", "var")`). 
+Under the maximal structure, the pupil-bin effect was `r ifelse(pupil_bin_maximal_exp2[pupil_bin_maximal_exp2$group=="LBP","max_p"] < 0.05, "significant", "not significant")` in the PC phase (`r mx(pupil_bin_maximal_exp2, "LBP", "max")`) and `r ifelse(pupil_bin_maximal_exp2[pupil_bin_maximal_exp2$group=="SBP","max_p"] < 0.05, "significant", "not significant")` in the PD phase (`r mx(pupil_bin_maximal_exp2, "SBP", "max")`).
+
+The pupil-bin effect was also tested on single trials. In logistic mixed-effects models of single-trial P(T2|T1) with lag and run as fixed covariates, the pupil-bin effect in Experiment 1 was significant in the T1-attend condition with random intercepts only (`r gl(pupil_bin_glmm_exp1, "T1-attend", "lag_run", "ri")`) and with by-participant random slopes for pupil bin (`r gl(pupil_bin_glmm_exp1, "T1-attend", "lag_run", "max")`), and it was not significant in the T1-ignore condition (random intercepts: `r gl(pupil_bin_glmm_exp1, "T1-ignore", "lag_run", "ri")`, maximal: `r gl(pupil_bin_glmm_exp1, "T1-ignore", "lag_run", "max")`). 
+In Experiment 2, the effect in the PC phase was significant with random intercepts only (`r gl(pupil_bin_glmm_exp2, "LBP", "lag_run", "ri")`) but not under the maximal structure (`r gl(pupil_bin_glmm_exp2, "LBP", "lag_run", "max")`), and the effect in the PD phase was not significant under either structure (random intercepts: `r gl(pupil_bin_glmm_exp2, "SBP", "lag_run", "ri")`, maximal: `r gl(pupil_bin_glmm_exp2, "SBP", "lag_run", "max")`). 
+Without the covariates, the corresponding results under the maximal structure were `r gl(pupil_bin_glmm_exp1, "T1-attend", "none", "max")` (T1-attend), `r gl(pupil_bin_glmm_exp1, "T1-ignore", "none", "max")` (T1-ignore), `r gl(pupil_bin_glmm_exp2, "LBP", "none", "max")` (PC phase), and `r gl(pupil_bin_glmm_exp2, "SBP", "none", "max")` (PD phase).
+
+The comparison of the intercept-only, linear, and U-shaped pupil-bin models was repeated with by-participant random slopes for the linear and quadratic pupil-bin terms in all three models. 
+All of these models resulted in singular fits. 
+In Experiment 1, `r sel(pupil_bin_u_maximal_exp1, "T1-attend")` in the T1-attend condition, and `r sel(pupil_bin_u_maximal_exp1, "T1-ignore")` in the T1-ignore condition. These selections were the same as with random intercepts only (T1-attend: `r sel(pupil_bin_model_comparison_exp1$models, "T1-attend")`, T1-ignore: `r sel(pupil_bin_model_comparison_exp1$models, "T1-ignore")`). 
+In Experiment 2, `r sel(pupil_bin_u_maximal_exp2, "LBP")` in the PC phase, and `r sel(pupil_bin_u_maximal_exp2, "SBP")` in the PD phase (random intercepts only, PC phase: `r sel(pupil_bin_model_comparison_exp2$models, "LBP")`, PD phase: `r sel(pupil_bin_model_comparison_exp2$models, "SBP")`). 
+Thus, under the maximal structure the U-shaped model was not preferred in any condition in which a pupil-bin effect was observed.
+
+For the time-bin analysis of Experiment 1, the per-bin models with random intercepts for participants already include all random effects that can be estimated within a single bin. As an additional check, all six time bins were therefore also fitted jointly with by-participant random slopes for every time bin and their full covariance matrix ($y \sim 0 + bin + (0 + bin|subject)$, Satterthwaite approximation for degrees of freedom). 
+These models resulted in singular fits. 
+`r ifelse(same_bins, "The time bins whose deviation from the overall accuracy survived FDR correction were identical to those reported in the main text", "The time bins whose deviation from the overall accuracy survived FDR correction differed from those reported in the main text")` (PD phase, T1-attend: `r paste0(sig_bins(timebin_maximal, "troughs", "T1-attend", "time_bin", 0), "–", sig_bins(timebin_maximal, "troughs", "T1-attend", "time_bin", 1), " s", collapse = " and ")`, PC phase, T1-attend: `r paste0(sig_bins(timebin_maximal, "peaks", "T1-attend", "time_bin", 0), "–", sig_bins(timebin_maximal, "peaks", "T1-attend", "time_bin", 1), " s", collapse = " and ")`, no bin in the T1-ignore condition).
+
+For the phase analysis of Experiment 2 with baseline pupil size as a covariate, the random-effects structure was extended with by-participant random slopes for baseline pupil size and random intercepts for participant × lag ($y \sim lag + phase + baseline\ pupil + (1 + phase + baseline\ pupil|subject) + (1|subject:lag)$). 
+By-participant random slopes for lag could not be included, because each participant contributed only one observation per lag × phase cell. 
+The model resulted in a singular fit, and the main effect of phase condition remained significant (`r lrt_txt(phase_covariate_maximal_exp2$chisq, phase_covariate_maximal_exp2$df, phase_covariate_maximal_exp2$p)`).
+
+Finally, the linear lag trend of the accuracy difference between conditions (the fitted lines in Figure 1D and Figure 4) was tested with by-participant random slopes for lag. 
+In Experiment 1 (T1-ignore minus T1-attend), the lag trend was `r ifelse(lag_maximal_exp1$ri_p < 0.05, "significant", "not significant")` with random intercepts only (`r lrt_txt(lag_maximal_exp1$ri_chisq, 1, lag_maximal_exp1$ri_p)`) and `r ifelse(lag_maximal_exp1$max_p < 0.05, "significant", "not significant")` under the maximal structure (`r lrt_txt(lag_maximal_exp1$max_chisq, 1, lag_maximal_exp1$max_p)`), and the random-slope variance did not improve the fit (`r lrt_txt(lag_maximal_exp1$slope_var_chisq, lag_maximal_exp1$slope_var_df, lag_maximal_exp1$slope_var_p)`). 
+In Experiment 2 (PD minus PC phase), the lag trend was not significant under either structure (random intercepts: `r lrt_txt(lag_maximal_exp2$ri_chisq, 1, lag_maximal_exp2$ri_p)`, maximal: `r lrt_txt(lag_maximal_exp2$max_chisq, 1, lag_maximal_exp2$max_p)`).
+
+### References
+Barr DJ, Levy R, Scheepers C, Tily HJ (2013) Random effects structure for confirmatory hypothesis testing: Keep it maximal. Journal of Memory and Language 68:255–278.
+
+Hupé J-M, Lamirel C, Lorenceau J (2008) Pupil dilation does not predict subsequent stability in perceptual rivalry. Proceedings of the National Academy of Sciences 105:E43–E43.
+
+Yang Y, Leopold DA, Duyn JH, Liu X (2024) Propagating cortical waves coordinate sensory encoding and memory retrieval in the human brain. bioRxiv:2024.06.24.600438.
+
+Yang Y, Leopold DA, Duyn JH, Liu X (2026) Sensory encoding and memory retrieval are coordinated with propagating waves in the human brain. Nature Communications 17:2343.
